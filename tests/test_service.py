@@ -169,3 +169,36 @@ async def test_not_configured_is_skipped(tmp_path):
     svc.apply_settings(Settings.from_env({"DATA_DIR": str(tmp_path)}))
     result = await svc.run_cycle()
     assert result.status == "skipped" and "URL" in result.reason
+
+
+async def test_preview_rendered_when_tv_off_after_settings_change(tmp_path):
+    fake = FakeFrame("off")
+    svc = _service(tmp_path, fake, ["11.1", "22.2", "33.3"])
+    # First start without a preview renders one even though the TV is off.
+    first = await svc.run_cycle()
+    assert first.status == "skipped" and "preview rendered" in first.reason
+    assert svc.history.preview_info() is not None
+    assert (tmp_path / "history" / "preview.jpg").exists()
+    assert (tmp_path / "history" / "preview-raw.png").exists()
+    # Later cycles with the TV off do not render again...
+    second = await svc.run_cycle()
+    assert "preview" not in second.reason
+    # ...until the settings change.
+    svc.apply_settings(svc.settings)
+    third = await svc.run_cycle()
+    assert "preview rendered" in third.reason
+    assert fake.calls == []
+
+
+async def test_dry_run_never_contacts_tv(tmp_path):
+    svc = _service(tmp_path, FakeFrame(), ["11.1"], DRY_RUN="true")
+
+    @asynccontextmanager
+    async def boom(_settings):
+        raise AssertionError("TV must not be contacted in test mode")
+        yield
+
+    svc.frame_factory = boom
+    result = await svc.run_cycle()
+    assert result.status == "rendered" and "test mode" in result.reason
+    assert svc.history.preview_info()["seconds"] >= 0

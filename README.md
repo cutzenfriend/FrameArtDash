@@ -20,6 +20,7 @@ FrameArtDash is a small Docker service. On a schedule it renders a Home Assistan
 ## Features
 
 - **Web UI for everything:** dashboard URL, Home Assistant token, TV IP, pairing, look, schedule and background images. The UI shows the image currently on the Frame plus the last three as thumbnails. The only container variable you need is a password.
+- **Preview without the TV:** render exactly what would be uploaded (full 4K, plus the raw browser screenshot) while the TV is off. Saving settings always renders a fresh preview, and *test mode* keeps the TV out of it entirely.
 - **Live dashboards:** a Home Assistant long-lived access token is injected into the browser, so no login or OAuth is needed. Header and sidebar are hidden automatically.
 - **Any web page:** a generic mode with optional Basic Auth and extra HTTP headers.
 - **Gallery look:** the sharp dashboard sits centered as a "canvas" with a drop shadow. The background is a blurred copy of the dashboard, an image you upload in the UI, or a gradient. An optional canvas texture is available.
@@ -110,6 +111,7 @@ All settings are edited in the web UI and stored in `/data/settings.json` (keep 
 | `FRAME_HOST` | | IP address of the Frame |
 | `FRAME_PORT` | `8002` | Websocket port of the TV |
 | `MATTE` | `none` | Matte for the uploaded image, e.g. `none`, `shadowbox_polar`, `modern_apricot` |
+| `DRY_RUN` | `false` | Test mode: render previews on schedule, never contact the TV |
 | `ONLY_IN_ARTMODE` | `false` | Only upload while the TV is in Art Mode |
 | `CLEANUP_UNMANAGED` | `false` | ⚠️ Also delete **all other** uploaded `MY_*` pictures on the TV |
 | `UPLOAD_TIMEOUT` | `60` | Seconds to wait for the upload to finish |
@@ -139,7 +141,7 @@ All settings are edited in the web UI and stored in `/data/settings.json` (keep 
 | `RETRIES` | `3` | Attempts for render, upload and select, with exponential backoff |
 | `DEBUG_IMAGES` | `false` | Keep the last screenshot and composed image in `/data/debug/` |
 
-Saving settings in the UI triggers a new cycle right away. That cycle skips the change check once, so a new look reaches the TV immediately.
+Saving settings in the UI triggers a new cycle right away. That cycle skips the change check once, so a new look reaches the TV immediately. If the TV is off or unreachable, it still renders a preview, which the UI shows under **Preview**.
 
 ## Home Assistant setup
 

@@ -34,6 +34,7 @@
   @keyframes pulse { 50% { opacity:.35; } }
 
   .btn { display:inline-flex; align-items:center; gap:8px; padding:9px 16px; border-radius:10px; border:1px solid var(--line2); background:transparent; color:var(--text); cursor:pointer; font-size:14px; white-space:nowrap; }
+  a.btn { text-decoration:none; }
   .btn:hover { border-color:var(--gold); }
   .btn.primary { background:var(--gold); border-color:var(--gold); color:#16130d; font-weight:600; }
   .btn.primary:hover { filter:brightness(1.08); }
@@ -65,9 +66,14 @@
   .thumb img { width:120px; aspect-ratio:16/9; object-fit:cover; border-radius:4px; border:1px solid var(--line2); cursor:zoom-in; background:#0b0c0e; }
   .thumb b { display:block; color:var(--text); font-weight:500; }
 
-  .previewbox { margin-top:24px; display:none; }
-  .previewbox.show { display:block; }
-  .previewbox img { width:100%; border-radius:6px; border:1px solid var(--line2); }
+  .views { display:flex; align-items:center; gap:4px; margin-bottom:14px; }
+  .view { background:none; border:1px solid transparent; border-radius:999px; padding:6px 14px; color:var(--muted); cursor:pointer; font-size:14px; }
+  .view.active { color:var(--text); border-color:var(--line2); background:var(--panel); }
+  .view .tag { font-size:11px; color:var(--gold); margin-left:6px; }
+  .tools { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .frame img { cursor:zoom-in; }
+  .pill.test { color:var(--warn); border-color:rgba(214,178,94,.4); display:none; }
+  .pill.test.show { display:inline-flex; }
 
   section { margin-top:56px; }
   .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:24px; overflow-x:auto; }
@@ -135,6 +141,7 @@
       FrameArtDash<small id="version"></small>
     </div>
     <div class="spacer"></div>
+    <span class="pill test" id="testPill">Test mode · TV not contacted</span>
     <span class="pill hide-sm" id="nextPill"><span class="dot" id="loopDot"></span><span id="nextText">…</span></span>
     <form method="post" action="/logout"><button class="btn ghost small" type="submit">Sign out</button></form>
   </div>
@@ -145,18 +152,19 @@
 
   <div class="stage">
     <div>
-      <div class="frame"><div class="mat" id="currentMat"><div class="empty"><b>Nothing on the Frame yet</b>The first uploaded image will appear here.</div></div></div>
-      <div class="caption" id="caption"></div>
-      <div class="previewbox" id="previewBox">
-        <h2 style="font:500 13px var(--sans);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:0 0 12px">Preview (not uploaded)</h2>
-        <img id="previewImg" alt="Rendered preview">
+      <div class="views">
+        <button class="view active" data-view="frame">On the Frame</button>
+        <button class="view" data-view="preview">Preview<span class="tag" id="previewTag"></span></button>
       </div>
+      <div class="frame"><div class="mat" id="mat"></div></div>
+      <div class="caption" id="caption"></div>
+      <div class="tools" id="tools"></div>
     </div>
     <aside class="side">
       <h2>Actions</h2>
       <div class="actions">
         <button class="btn primary" id="refreshBtn">Push to the Frame now</button>
-        <button class="btn" id="previewBtn">Render preview</button>
+        <button class="btn" id="previewBtn" title="Renders the dashboard as it would look on the Frame. The TV is not needed.">Render preview</button>
         <button class="btn" id="tvBtn">Check TV</button>
       </div>
       <h2>Last run</h2>
@@ -200,6 +208,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let schema = null, status = null, selectedBg = "", activeTab = null;
+let view = null, seenPreview = undefined;
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { credentials: "same-origin", ...opts });
@@ -227,17 +236,17 @@ async function loadStatus() {
     ? "Next run " + new Date(status.next_run).toLocaleTimeString([], { timeStyle: "short" }) : "Idle";
   for (const b of ["refreshBtn", "previewBtn"]) $(b).disabled = status.busy;
 
+  $("testPill").classList.toggle("show", !!status.dry_run);
   const hist = status.history || [];
-  const mat = $("currentMat");
-  if (hist.length) {
-    const src = "/api/history/current.jpg?t=" + encodeURIComponent(hist[0].time);
-    if (mat.dataset.src !== src) {
-      mat.innerHTML = `<img src="${src}" alt="Image currently on the Frame">`;
-      mat.dataset.src = src;
-      mat.querySelector("img").onclick = () => zoom(src);
-    }
-    $("caption").innerHTML = `<span>On the Frame since <b>${fmtTime(hist[0].time)}</b></span><span>Content ID <b>${esc(hist[0].content_id)}</b></span>`;
-  }
+  const pv = status.preview;
+  // Show a new preview as soon as it arrives (after the first load), and default to
+  // the preview while nothing has been uploaded yet.
+  if (seenPreview !== undefined && pv && pv.time !== seenPreview) view = "preview";
+  seenPreview = pv ? pv.time : null;
+  if (view === null) view = hist.length || !pv ? "frame" : "preview";
+  $("previewTag").textContent = pv ? new Date(pv.time).toLocaleTimeString([], { timeStyle: "short" }) : "";
+  renderStage(hist, pv);
+
   const prev = hist.slice(1, 4);
   $("history").innerHTML = prev.length ? prev.map((e) =>
     `<div class="thumb"><img src="/api/history/${encodeURIComponent(e.file)}" alt="" data-zoom><div><b>${fmtTime(e.time)}</b>${esc(e.content_id)}</div></div>`
@@ -274,6 +283,48 @@ async function loadLogs() {
   } catch {}
 }
 
+function setMat(src, alt) {
+  const mat = $("mat");
+  if (!src) { mat.innerHTML = alt; mat.dataset.src = ""; return; }
+  if (mat.dataset.src !== src) {
+    mat.innerHTML = `<img src="${src}" alt="${esc(alt)}">`;
+    mat.dataset.src = src;
+    mat.querySelector("img").onclick = () => zoom(src);
+  }
+}
+
+function renderStage(hist, pv) {
+  document.querySelectorAll(".view").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  if (view === "frame") {
+    if (hist.length) {
+      setMat("/api/history/current.jpg?t=" + encodeURIComponent(hist[0].time), "Image currently on the Frame");
+      $("caption").innerHTML = `<span>On the Frame since <b>${fmtTime(hist[0].time)}</b></span><span>Content ID <b>${esc(hist[0].content_id)}</b></span>`;
+    } else {
+      setMat(null, `<div class="empty"><b>Nothing on the Frame yet</b>Use <i>Render preview</i> to see the result without the TV.</div>`);
+      $("caption").innerHTML = "";
+    }
+    $("tools").innerHTML = "";
+    return;
+  }
+  if (!pv) {
+    setMat(null, `<div class="empty"><b>No preview yet</b>Click <i>Render preview</i>. The TV does not need to be on.</div>`);
+    $("caption").innerHTML = ""; $("tools").innerHTML = "";
+    return;
+  }
+  const t = encodeURIComponent(pv.time);
+  setMat("/api/preview.jpg?t=" + t, "Rendered preview");
+  $("caption").innerHTML = `<span>Rendered <b>${fmtTime(pv.time)}</b> in <b>${pv.seconds} s</b></span><span><b>${pv.size_kb} KB</b> JPEG</span><span>Not uploaded</span>`;
+  $("tools").innerHTML = `
+    <a class="btn small" href="/api/preview.jpg?t=${t}" target="_blank" rel="noopener">Full size</a>
+    <a class="btn small" href="/api/preview.jpg?download=1">Download</a>
+    <a class="btn small" href="/api/preview.jpg?raw=1&t=${t}" target="_blank" rel="noopener" title="The browser screenshot before composing, useful to check that header and sidebar are hidden">Raw screenshot</a>`;
+}
+
+document.querySelectorAll(".view").forEach((b) => b.onclick = () => {
+  view = b.dataset.view;
+  if (status) renderStage(status.history || [], status.preview);
+});
+
 // -- actions -----------------------------------------------------------------
 $("refreshBtn").onclick = async () => {
   try { await api("/api/refresh", { method: "POST" }); } catch (e) { alert(e.message); }
@@ -283,11 +334,12 @@ $("previewBtn").onclick = async () => {
   const btn = $("previewBtn"); btn.disabled = true; btn.textContent = "Rendering…";
   try {
     await api("/api/preview", { method: "POST" });
-    $("previewImg").src = "/api/preview.jpg?t=" + Date.now();
-    $("previewBox").classList.add("show");
-    $("previewImg").onclick = () => zoom($("previewImg").src);
-  } catch (e) { alert("Preview failed: " + e.message); }
-  btn.disabled = false; btn.textContent = "Render preview"; loadStatus();
+    view = "preview";
+  } catch (e) {
+    const r = status && status.last_result;
+    alert("Preview failed: " + (r && r.reason ? r.reason : e.message));
+  }
+  btn.disabled = false; btn.textContent = "Render preview"; loadStatus(); loadLogs();
 };
 $("tvBtn").onclick = async () => {
   const btn = $("tvBtn"); btn.disabled = true; btn.textContent = "Checking…";
@@ -425,7 +477,7 @@ $("settingsForm").onsubmit = async (e) => {
   const msg = $("saveMsg");
   try {
     await api("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ values }) });
-    msg.textContent = "Saved. A new image is rendered right away."; msg.className = "msg ok";
+    msg.textContent = "Saved. A new preview is rendered right away; it is pushed to the Frame if the TV is on."; msg.className = "msg ok";
     loadSettings();
   } catch (err) { msg.textContent = err.message; msg.className = "msg bad"; }
 };

@@ -116,20 +116,18 @@ async def favicon(request: web.Request) -> web.Response:
     return web.Response(text=_page("favicon.svg"), content_type="image/svg+xml")
 
 
-def _jpeg(data: bytes | None) -> web.Response:
-    if data is None:
-        raise web.HTTPNotFound()
-    return web.Response(body=data, content_type="image/jpeg", headers={"Cache-Control": "no-store"})
-
-
 def _file(path) -> web.FileResponse:
     if path is None:
         raise web.HTTPNotFound()
     return web.FileResponse(path, headers={"Cache-Control": "no-cache"})
 
 
-async def preview_image(request: web.Request) -> web.Response:
-    return _jpeg(request.app[SERVICE].last_jpeg)
+async def preview_image(request: web.Request) -> web.FileResponse:
+    name = "preview-raw.png" if request.query.get("raw") == "1" else "preview.jpg"
+    response = _file(request.app[SERVICE].history.path(name))
+    if request.query.get("download") == "1":
+        response.headers["Content-Disposition"] = f'attachment; filename="frameartdash-{name}"'
+    return response
 
 
 async def history_image(request: web.Request) -> web.FileResponse:
@@ -158,7 +156,8 @@ async def status(request: web.Request) -> web.Response:
             "current_id": state.current_id,
             "last_upload": state.last_upload,
             "history": service.history.entries(),
-            "preview": service.last_jpeg is not None,
+            "preview": service.history.preview_info(),
+            "dry_run": s.dry_run,
             "pairing": request.app[WEBSTATE]["pairing"],
             "api_key": request.app[AUTH].api_key,
         }
@@ -175,7 +174,9 @@ async def refresh_api(request: web.Request) -> web.Response:
 
 async def preview(request: web.Request) -> web.Response:
     result = await request.app[SERVICE].run_cycle(upload=False)
-    return web.json_response(result.as_dict(), status=200 if result.status == "rendered" else 500)
+    if result.status != "rendered":
+        return web.json_response({**result.as_dict(), "error": result.reason}, status=500)
+    return web.json_response(result.as_dict())
 
 
 async def tv_info(request: web.Request) -> web.Response:

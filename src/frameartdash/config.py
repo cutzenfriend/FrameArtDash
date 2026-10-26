@@ -110,6 +110,14 @@ FIELDS: tuple[Field, ...] = (
     Field("FRAME_HOST", "TV IP address", "TV", help="IP of the Samsung The Frame"),
     Field("FRAME_PORT", "TV port", "TV", "8002", kind="number", advanced=True),
     Field("MATTE", "Matte", "TV", "none", help="none, shadowbox_polar, modern_apricot, …"),
+    Field(
+        "DRY_RUN",
+        "Test mode",
+        "TV",
+        "false",
+        kind="bool",
+        help="Render previews on schedule but never contact the TV.",
+    ),
     Field("ONLY_IN_ARTMODE", "Only while in Art Mode", "TV", "false", kind="bool"),
     Field(
         "CLEANUP_UNMANAGED",
@@ -276,6 +284,7 @@ class Settings:
     frame_port: int = 8002
     matte: str = "none"
     only_in_artmode: bool = False
+    dry_run: bool = False
     upload_timeout: int = 60
     cleanup_unmanaged: bool = False
 
@@ -406,6 +415,7 @@ class Settings:
             frame_port=_int(env, "FRAME_PORT", minimum=1),
             matte=_str(env, "MATTE") or "none",
             only_in_artmode=_bool(env, "ONLY_IN_ARTMODE"),
+            dry_run=_bool(env, "DRY_RUN"),
             upload_timeout=_int(env, "UPLOAD_TIMEOUT", minimum=5),
             cleanup_unmanaged=_bool(env, "CLEANUP_UNMANAGED"),
             interval_min=_int(env, "INTERVAL_MIN", minimum=1),

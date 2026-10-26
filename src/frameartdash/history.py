@@ -57,9 +57,29 @@ class History:
         except OSError as e:
             log.warning("Could not store history preview: %s", e)
 
+    # -- preview (rendered, not necessarily uploaded) ---------------------------
+
+    def save_preview(self, jpeg: bytes, png: bytes, info: dict) -> None:
+        try:
+            self.dir.mkdir(parents=True, exist_ok=True)
+            (self.dir / "preview.jpg").write_bytes(jpeg)
+            (self.dir / "preview-raw.png").write_bytes(png)
+            tmp = self.dir / "preview.json.tmp"
+            tmp.write_text(json.dumps(info, indent=2))
+            os.replace(tmp, self.dir / "preview.json")
+        except OSError as e:
+            log.warning("Could not store preview: %s", e)
+
+    def preview_info(self) -> dict | None:
+        try:
+            return json.loads((self.dir / "preview.json").read_text())
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
+
     def path(self, name: str) -> Path | None:
         """Resolve a file name from the index safely (no path traversal)."""
-        if name == "current.jpg" or any(e.get("file") == name for e in self.entries()):
+        fixed = ("current.jpg", "preview.jpg", "preview-raw.png")
+        if name in fixed or any(e.get("file") == name for e in self.entries()):
             path = self.dir / name
             return path if path.is_file() else None
         return None

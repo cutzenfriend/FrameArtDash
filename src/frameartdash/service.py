@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
@@ -65,6 +66,8 @@ class Service:
         self.last_jpeg: bytes | None = None
         self.next_run: datetime | None = None
         self._wake = asyncio.Event()
+        # Render a preview even if the TV is off: on first start and after settings changes.
+        self.preview_pending = self.history.preview_info() is None
 
     def apply_settings(self, settings: Settings) -> None:
         """Use new settings from the next cycle on and reschedule right away."""
@@ -73,6 +76,7 @@ class Service:
         state = self.store.load()
         state.last_hash = None
         self.store.save(state)
+        self.preview_pending = True
         self._wake.set()
 
     # -- cycle ---------------------------------------------------------------
@@ -96,21 +100,31 @@ class Service:
         s = self.settings
         if not s.configured:
             return CycleResult("skipped", reason="no dashboard URL configured")
-        if upload and not s.frame_host:
-            return CycleResult("skipped", reason="no TV IP address configured")
-        if upload and not force and not in_window(s.active_hours, self.clock().time()):
-            return CycleResult("skipped", reason="outside ACTIVE_HOURS")
 
         state = self.store.load()
-
         if not upload:
             await self._render_and_compose(state, force=True)
-            return CycleResult("rendered")
+            return CycleResult("rendered", reason="preview, not uploaded")
+        if s.dry_run:
+            if not force and not in_window(s.active_hours, self.clock().time()):
+                return CycleResult("skipped", reason="outside active hours")
+            await self._render_and_compose(state, force=True)
+            return CycleResult("rendered", reason="test mode, TV not contacted")
 
-        try:
-            return await self._push(state, force)
-        except frame_mod.FrameUnreachable as e:
-            return CycleResult("skipped", reason=str(e))
+        if not s.frame_host:
+            result = CycleResult("skipped", reason="no TV IP address configured")
+        elif not force and not in_window(s.active_hours, self.clock().time()):
+            result = CycleResult("skipped", reason="outside active hours")
+        else:
+            try:
+                result = await self._push(state, force)
+            except frame_mod.FrameUnreachable as e:
+                result = CycleResult("skipped", reason=str(e))
+
+        if result.status == "skipped" and self.preview_pending:
+            await self._render_and_compose(state, force=True)
+            result.reason += "; preview rendered"
+        return result
 
     async def _push(self, state: State, force: bool) -> CycleResult:
         s = self.settings
@@ -145,6 +159,7 @@ class Service:
     async def _render_and_compose(self, state: State, force: bool):
         """Returns (image, jpeg, hash, distance); image and jpeg are None if unchanged."""
         s = self.settings
+        started = time.monotonic()
         png = await retry(lambda: self.renderer(s), s.retries, "Render")
         shot = compose.load(png)
         new_hash = compose.image_hash(shot)
@@ -155,6 +170,14 @@ class Service:
         image = await asyncio.to_thread(compose.compose, shot, s)
         jpeg = await asyncio.to_thread(compose.to_jpeg, image, s.jpeg_quality)
         self.last_jpeg = jpeg
+        self.preview_pending = False
+        info = {
+            "time": self.clock().astimezone().isoformat(timespec="seconds"),
+            "seconds": round(time.monotonic() - started, 1),
+            "url": s.target_url,
+            "size_kb": len(jpeg) // 1024,
+        }
+        await asyncio.to_thread(self.history.save_preview, jpeg, png, info)
         if s.debug_images:
             self._save_debug(png, jpeg)
         return image, jpeg, new_hash, distance

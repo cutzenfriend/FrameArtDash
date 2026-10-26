@@ -110,3 +110,29 @@ async def test_status_and_history(client):
     assert (await client.get("/api/history/" + status["history"][0]["file"])).status == 200
     assert (await client.get("/api/history/state.json")).status == 404
     json.dumps(status)
+
+
+async def test_preview_endpoint_without_tv(client):
+    await login(client)
+    assert (await client.get("/api/preview.jpg")).status == 404
+    resp = await client.post("/api/preview")
+    assert resp.status == 500
+    assert "URL" in (await resp.json())["error"]
+
+    png = io.BytesIO()
+    Image.new("RGB", (480, 270), (30, 30, 30)).save(png, "PNG")
+
+    async def renderer(_settings):
+        return png.getvalue()
+
+    client.service.renderer = renderer
+    await client.put("/api/settings", json={"values": {"TARGET_URL": "http://example.test/"}})
+    resp = await client.post("/api/preview")
+    assert resp.status == 200, await resp.text()
+    status = await (await client.get("/api/status")).json()
+    assert status["preview"]["size_kb"] > 0
+    assert (await client.get("/api/preview.jpg")).content_type == "image/jpeg"
+    raw = await client.get("/api/preview.jpg?raw=1")
+    assert raw.content_type == "image/png"
+    dl = await client.get("/api/preview.jpg?download=1")
+    assert "attachment" in dl.headers["Content-Disposition"]
