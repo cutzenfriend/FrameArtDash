@@ -136,3 +136,21 @@ async def test_preview_endpoint_without_tv(client):
     assert raw.content_type == "image/png"
     dl = await client.get("/api/preview.jpg?download=1")
     assert "attachment" in dl.headers["Content-Disposition"]
+
+
+async def test_card_editor_endpoints(client):
+    await login(client)
+    schema = await (await client.get("/api/cards/schema")).json()
+    assert {t["type"] for t in schema["types"]} >= {"clock", "weather", "energy"}
+    resp = await client.put(
+        "/api/cards", json={"cards": [{"type": "clock", "x": 10, "y": 10, "w": 20, "h": 15}]}
+    )
+    assert resp.status == 200
+    layout = await (await client.get("/api/cards")).json()
+    assert layout["cards"][0]["type"] == "clock"
+    assert (await client.put("/api/cards", json={"cards": [{"type": "nope"}]})).status == 400
+    # Without HA credentials the canvas explains what is missing instead of failing.
+    canvas = await client.get("/canvas.html")
+    assert canvas.status == 200 and "Home Assistant" in await canvas.text()
+    assert (await client.get("/static/mdi.json")).status == 200
+    assert (await client.get("/static/../settings.json")).status == 404

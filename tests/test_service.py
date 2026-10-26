@@ -202,3 +202,45 @@ async def test_dry_run_never_contacts_tv(tmp_path):
     result = await svc.run_cycle()
     assert result.status == "rendered" and "test mode" in result.reason
     assert svc.history.preview_info()["seconds"] >= 0
+
+
+async def test_cards_layout_uses_card_renderer(tmp_path):
+    settings = Settings.from_env(
+        {
+            "LAYOUT": "cards",
+            "HA_URL": "http://ha",
+            "HA_TOKEN": "t",
+            "FRAME_HOST": "tv",
+            "DATA_DIR": str(tmp_path),
+            "RETRIES": "1",
+        }
+    )
+    calls = []
+
+    async def card_renderer(s, layout):
+        calls.append(layout)
+        return _png("cards")
+
+    async def renderer(s):
+        raise AssertionError("dashboard renderer must not be used")
+
+    @asynccontextmanager
+    async def factory(_settings):
+        yield FakeFrame()
+
+    svc = Service(
+        settings,
+        renderer=renderer,
+        frame_factory=factory,
+        card_renderer=card_renderer,
+        clock=lambda: datetime(2026, 1, 1, 12),
+    )
+    result = await svc.run_cycle()
+    assert result.status == "uploaded"
+    assert calls and calls[0]["cards"] == []
+    assert svc.history.entries()
+
+
+def test_cards_mode_needs_ha_credentials():
+    s = Settings.from_env({"LAYOUT": "cards"})
+    assert not s.configured and "Home Assistant" in s.not_configured_reason

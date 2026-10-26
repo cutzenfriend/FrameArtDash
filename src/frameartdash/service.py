@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from frameartdash import compose, frame as frame_mod, render as render_mod
+from frameartdash.cards.store import LayoutStore
 from frameartdash.config import Settings, in_window
 from frameartdash.history import History
 from frameartdash.state import State, StateStore
@@ -18,6 +19,16 @@ from frameartdash.state import State, StateStore
 log = logging.getLogger(__name__)
 
 Renderer = Callable[[Settings], Awaitable[bytes]]
+CardRenderer = Callable[[Settings, dict], Awaitable[bytes]]
+
+
+async def render_cards(settings: Settings, layout: dict) -> bytes:
+    from frameartdash.cards import page
+
+    html, tz = await page.build(settings, layout, inline=True)
+    return await render_mod.render_html(settings, html, tz)
+
+
 FrameFactory = Callable[[Settings], Any]  # returns an async context manager yielding a Frame
 
 
@@ -53,9 +64,11 @@ class Service:
         renderer: Renderer = render_mod.render,
         frame_factory: FrameFactory = frame_mod.connect,
         clock: Callable[[], datetime] = datetime.now,
+        card_renderer: CardRenderer = render_cards,
     ) -> None:
         self.settings = settings
         self.renderer = renderer
+        self.card_renderer = card_renderer
         self.frame_factory = frame_factory
         self.clock = clock
         self.store = StateStore(settings.state_file)
@@ -99,7 +112,7 @@ class Service:
     async def _cycle(self, force: bool, upload: bool) -> CycleResult:
         s = self.settings
         if not s.configured:
-            return CycleResult("skipped", reason="no dashboard URL configured")
+            return CycleResult("skipped", reason=s.not_configured_reason)
 
         state = self.store.load()
         if not upload:
@@ -160,14 +173,22 @@ class Service:
         """Returns (image, jpeg, hash, distance); image and jpeg are None if unchanged."""
         s = self.settings
         started = time.monotonic()
-        png = await retry(lambda: self.renderer(s), s.retries, "Render")
+        if s.layout == "cards":
+            layout = LayoutStore(s.cards_file).load()
+            png = await retry(lambda: self.card_renderer(s, layout), s.retries, "Render")
+        else:
+            png = await retry(lambda: self.renderer(s), s.retries, "Render")
         shot = compose.load(png)
         new_hash = compose.image_hash(shot)
         distance = compose.hash_distance(state.last_hash, new_hash)
         if not force and s.diff_threshold > 0 and distance is not None and distance < s.diff_threshold:
             return None, None, new_hash, distance
 
-        image = await asyncio.to_thread(compose.compose, shot, s)
+        if s.layout == "cards":
+            # The card page already is the finished picture.
+            image = shot if shot.size == s.output_size else shot.resize(s.output_size)
+        else:
+            image = await asyncio.to_thread(compose.compose, shot, s)
         jpeg = await asyncio.to_thread(compose.to_jpeg, image, s.jpeg_quality)
         self.last_jpeg = jpeg
         self.preview_pending = False

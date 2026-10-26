@@ -6,6 +6,7 @@ import asyncio
 import collections
 import logging
 import signal
+import time
 from importlib import resources
 
 from aiohttp import web
@@ -13,7 +14,11 @@ from aiohttp import web
 from frameartdash import __version__, frame as frame_mod
 from frameartdash.auth import COOKIE, SESSION_DAYS, Auth
 from frameartdash.backgrounds import BackgroundError, Backgrounds
+from frameartdash.cards import page as cards_page
+from frameartdash.cards.schema import schema_json
+from frameartdash.cards.store import LayoutError, LayoutStore
 from frameartdash.config import FIELDS, GROUPS, SECRET_KEYS, ConfigError, SettingsStore
+from frameartdash.ha import HAClient, HAError
 from frameartdash.service import Service
 
 log = logging.getLogger(__name__)
@@ -26,6 +31,12 @@ WEBSTATE = web.AppKey("webstate", dict)
 LOOP = web.AppKey("loop", asyncio.Task)
 
 PUBLIC = {"/login", "/healthz", "/refresh", "/favicon.svg"}
+STATIC_TYPES = {
+    ".woff2": "font/woff2",
+    ".json": "application/json",
+    ".js": "text/javascript",
+    ".css": "text/css",
+}
 
 # Keeps references to fire-and-forget tasks so they are not garbage collected.
 _background: set[asyncio.Task] = set()
@@ -69,7 +80,7 @@ def _json_error(message: str, status: int = 400) -> web.Response:
 
 @web.middleware
 async def auth_middleware(request: web.Request, handler):
-    if request.path in PUBLIC:
+    if request.path in PUBLIC or request.path.startswith("/static/"):
         return await handler(request)
     if request.app[AUTH].check_session(request.cookies.get(COOKIE)):
         return await handler(request)
@@ -110,6 +121,19 @@ async def logout(request: web.Request) -> web.Response:
 
 async def index(request: web.Request) -> web.Response:
     return web.Response(text=_page("index.html"), content_type="text/html")
+
+
+async def static_file(request: web.Request) -> web.Response:
+    name = request.match_info["name"]
+    suffix = "." + name.rsplit(".", 1)[-1] if "." in name else ""
+    if "/" in name or suffix not in STATIC_TYPES:
+        raise web.HTTPNotFound()
+    try:
+        data = resources.files("frameartdash.webui").joinpath(f"static/{name}").read_bytes()
+    except (FileNotFoundError, IsADirectoryError):
+        raise web.HTTPNotFound() from None
+    cache = "public, max-age=86400" if suffix in (".woff2", ".json") else "no-cache"
+    return web.Response(body=data, content_type=STATIC_TYPES[suffix], headers={"Cache-Control": cache})
 
 
 async def favicon(request: web.Request) -> web.Response:
@@ -158,6 +182,7 @@ async def status(request: web.Request) -> web.Response:
             "history": service.history.entries(),
             "preview": service.history.preview_info(),
             "dry_run": s.dry_run,
+            "layout": s.layout,
             "pairing": request.app[WEBSTATE]["pairing"],
             "api_key": request.app[AUTH].api_key,
         }
@@ -252,6 +277,7 @@ async def get_settings(request: web.Request) -> web.Response:
                     "help": f.help,
                     "options": f.options,
                     "advanced": f.advanced,
+                    "only": f.only,
                     "default": f.default,
                 }
                 for f in FIELDS
@@ -321,6 +347,76 @@ async def delete_background(request: web.Request) -> web.Response:
     return web.json_response({"status": "deleted"})
 
 
+# -- card layout ----------------------------------------------------------------
+
+
+def _layouts(request: web.Request) -> LayoutStore:
+    return LayoutStore(request.app[SERVICE].settings.cards_file)
+
+
+async def get_cards(request: web.Request) -> web.Response:
+    return web.json_response(_layouts(request).load())
+
+
+async def put_cards(request: web.Request) -> web.Response:
+    try:
+        layout = _layouts(request).save(await request.json())
+    except (ValueError, LayoutError) as e:
+        return _json_error(str(e))
+    return web.json_response(layout)
+
+
+async def cards_schema(request: web.Request) -> web.Response:
+    return web.json_response(schema_json())
+
+
+async def canvas(request: web.Request) -> web.Response:
+    """The card layout as the editor shows it (same HTML as the rendered picture)."""
+    settings = request.app[SERVICE].settings
+    if not (settings.ha_url and settings.ha_token):
+        return web.Response(
+            text="<body style='background:#111;color:#bbb;font:24px system-ui;display:grid;place-items:center;"
+            "height:100vh;margin:0'>Enter the Home Assistant URL and token under Source first.</body>",
+            content_type="text/html",
+        )
+    try:
+        html, _ = await cards_page.build(settings, _layouts(request).load(), inline=False, edit=True)
+    except HAError as e:
+        return web.Response(
+            text=f"<body style='background:#111;color:#d9826b;font:24px system-ui;padding:40px'>{e}</body>",
+            content_type="text/html",
+        )
+    return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store"})
+
+
+async def ha_entities(request: web.Request) -> web.Response:
+    """Entities for the editor's picker, cached for 30 seconds."""
+    settings = request.app[SERVICE].settings
+    cache = request.app[WEBSTATE].setdefault("entities", {"time": 0.0, "data": None})
+    if cache["data"] is None or time.monotonic() - cache["time"] > 30 or request.query.get("fresh"):
+        if not (settings.ha_url and settings.ha_token):
+            return _json_error("Home Assistant URL and token are not configured")
+        try:
+            async with HAClient(settings.ha_url, settings.ha_token) as ha:
+                states = await ha.states()
+        except HAError as e:
+            return _json_error(str(e), 502)
+        cache["data"] = sorted(
+            (
+                {
+                    "id": eid,
+                    "name": st.get("attributes", {}).get("friendly_name", eid),
+                    "state": st.get("state"),
+                    "unit": st.get("attributes", {}).get("unit_of_measurement", ""),
+                }
+                for eid, st in states.items()
+            ),
+            key=lambda e: e["id"],
+        )
+        cache["time"] = time.monotonic()
+    return web.json_response({"entities": cache["data"]})
+
+
 # -- public endpoints ---------------------------------------------------------
 
 
@@ -381,6 +477,12 @@ def build_app(service: Service, store: SettingsStore, auth: Auth, run_loop: bool
     r.add_post("/api/backgrounds", upload_background)
     r.add_get("/api/backgrounds/{name}", background_image)
     r.add_delete("/api/backgrounds/{name}", delete_background)
+    r.add_get("/static/{name}", static_file)
+    r.add_get("/canvas.html", canvas)
+    r.add_get("/api/cards", get_cards)
+    r.add_put("/api/cards", put_cards)
+    r.add_get("/api/cards/schema", cards_schema)
+    r.add_get("/api/ha/entities", ha_entities)
 
     if run_loop:
 

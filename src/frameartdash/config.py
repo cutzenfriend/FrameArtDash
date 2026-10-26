@@ -14,8 +14,10 @@ from dataclasses import dataclass, field
 from datetime import time
 from pathlib import Path
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 STYLES = ("blur", "image", "gradient")
+LAYOUTS = ("dashboard", "cards")
 
 
 class ConfigError(ValueError):
@@ -32,6 +34,7 @@ class Field:
     help: str = ""
     options: tuple[str, ...] = ()
     advanced: bool = False
+    only: str = ""  # shown only for this LAYOUT
 
 
 GROUPS = ("Source", "TV", "Look", "Schedule")
@@ -39,11 +42,21 @@ GROUPS = ("Source", "TV", "Look", "Schedule")
 FIELDS: tuple[Field, ...] = (
     # Source
     Field(
+        "LAYOUT",
+        "Content",
+        "Source",
+        "dashboard",
+        kind="select",
+        options=LAYOUTS,
+        help="dashboard: screenshot of a web page. cards: live cards placed on your background in the card editor.",
+    ),
+    Field(
         "TARGET_URL",
         "Dashboard URL",
         "Source",
         kind="url",
         help="Page to render, e.g. http://homeassistant.local:8123/frame-dash/art",
+        only="dashboard",
     ),
     Field(
         "HA_TOKEN",
@@ -57,10 +70,15 @@ FIELDS: tuple[Field, ...] = (
         "Home Assistant URL",
         "Source",
         kind="url",
-        advanced=True,
-        help="Only needed if the token belongs to another origin than the dashboard URL.",
+        help="e.g. http://homeassistant.local:8123. Needed for cards; defaults to the dashboard URL's origin.",
     ),
-    Field("HA_THEME", "HA theme", "Source", help="Frontend theme, e.g. frame. Empty: dashboard default."),
+    Field(
+        "HA_THEME",
+        "HA theme",
+        "Source",
+        help="Frontend theme, e.g. frame. Empty: dashboard default.",
+        only="dashboard",
+    ),
     Field(
         "HA_DARK",
         "Dark mode",
@@ -68,17 +86,28 @@ FIELDS: tuple[Field, ...] = (
         kind="select",
         options=("", "true", "false"),
         help="Force dark or light mode of the theme.",
+        only="dashboard",
     ),
-    Field("HA_LANGUAGE", "HA language", "Source", advanced=True, help="e.g. en, de"),
-    Field("HIDE_CHROME", "Hide header and sidebar", "Source", "true", kind="bool"),
+    Field(
+        "HA_LANGUAGE", "Language", "Source", advanced=True, help="e.g. en, de. Default: from Home Assistant"
+    ),
+    Field(
+        "TIME_ZONE",
+        "Time zone",
+        "Source",
+        advanced=True,
+        help="e.g. Europe/Berlin. Default: from Home Assistant, else the container's TZ",
+    ),
+    Field("HIDE_CHROME", "Hide header and sidebar", "Source", "true", kind="bool", only="dashboard"),
     Field(
         "WAIT_SELECTOR",
         "Wait for selector",
         "Source",
         advanced=True,
         help="CSS selector to wait for. Defaults to home-assistant in HA mode.",
+        only="dashboard",
     ),
-    Field("VIEWPORT", "Viewport", "Source", "1920x1080", help="Browser size in CSS pixels"),
+    Field("VIEWPORT", "Viewport", "Source", "1920x1080", help="Browser size in CSS pixels", only="dashboard"),
     Field(
         "DEVICE_SCALE",
         "Device scale",
@@ -86,6 +115,7 @@ FIELDS: tuple[Field, ...] = (
         "2",
         kind="number",
         help="1920x1080 × 2 renders at native 4K sharpness",
+        only="dashboard",
     ),
     Field(
         "WAIT_MS",
@@ -94,9 +124,18 @@ FIELDS: tuple[Field, ...] = (
         "3000",
         kind="number",
         help="Time for charts and animations to finish",
+        only="dashboard",
     ),
-    Field("EXTRA_CSS", "Extra CSS", "Source", kind="textarea", advanced=True),
-    Field("BASIC_AUTH", "Basic auth", "Source", kind="secret", advanced=True, help="user:password"),
+    Field("EXTRA_CSS", "Extra CSS", "Source", kind="textarea", advanced=True, only="dashboard"),
+    Field(
+        "BASIC_AUTH",
+        "Basic auth",
+        "Source",
+        kind="secret",
+        advanced=True,
+        help="user:password",
+        only="dashboard",
+    ),
     Field(
         "EXTRA_HEADERS",
         "Extra headers",
@@ -104,6 +143,7 @@ FIELDS: tuple[Field, ...] = (
         kind="textarea",
         advanced=True,
         help='JSON object, e.g. {"X-Api-Key": "…"}',
+        only="dashboard",
     ),
     Field("RENDER_TIMEOUT", "Render timeout (s)", "Source", "60", kind="number", advanced=True),
     # TV
@@ -132,11 +172,19 @@ FIELDS: tuple[Field, ...] = (
     Field("STYLE", "Background", "Look", "blur", kind="select", options=STYLES),
     Field("BG_IMAGE", "Background image", "Look", kind="background", help="Used with background = image"),
     Field("BG_GRADIENT", "Gradient colors", "Look", "#20242e,#0b0d12", help="Top,bottom"),
-    Field("BLUR_RADIUS", "Blur radius", "Look", "60", kind="number"),
-    Field("BLUR_BRIGHTNESS", "Blur brightness", "Look", "0.45", kind="number", help="1 = unchanged"),
-    Field("CANVAS_PADDING", "Margin (%)", "Look", "8", kind="number"),
-    Field("CANVAS_SHADOW", "Drop shadow", "Look", "true", kind="bool"),
-    Field("CANVAS_TEXTURE", "Canvas texture", "Look", "false", kind="bool"),
+    Field("BLUR_RADIUS", "Blur radius", "Look", "60", kind="number", only="dashboard"),
+    Field(
+        "BLUR_BRIGHTNESS",
+        "Blur brightness",
+        "Look",
+        "0.45",
+        kind="number",
+        help="1 = unchanged",
+        only="dashboard",
+    ),
+    Field("CANVAS_PADDING", "Margin (%)", "Look", "8", kind="number", only="dashboard"),
+    Field("CANVAS_SHADOW", "Drop shadow", "Look", "true", kind="bool", only="dashboard"),
+    Field("CANVAS_TEXTURE", "Canvas texture", "Look", "false", kind="bool", only="dashboard"),
     Field("OUTPUT_SIZE", "Output size", "Look", "3840x2160", advanced=True),
     Field("JPEG_QUALITY", "JPEG quality", "Look", "90", kind="number", advanced=True),
     # Schedule
@@ -251,12 +299,14 @@ def in_window(window: tuple[time, time] | None, now: time) -> bool:
 @dataclass(frozen=True)
 class Settings:
     # Render
+    layout: str = "dashboard"
     target_url: str = ""
     ha_token: str = ""
     ha_url: str = ""
     ha_theme: str = ""
     ha_dark: bool | None = None
     ha_language: str = ""
+    time_zone: str = ""
     hide_chrome: bool = True
     wait_selector: str = ""
     viewport: tuple[int, int] = (1920, 1080)
@@ -306,7 +356,19 @@ class Settings:
 
     @property
     def configured(self) -> bool:
+        if self.layout == "cards":
+            return bool(self.ha_url and self.ha_token)
         return bool(self.target_url)
+
+    @property
+    def not_configured_reason(self) -> str:
+        if self.layout == "cards":
+            return "cards need the Home Assistant URL and token"
+        return "no dashboard URL configured"
+
+    @property
+    def cards_file(self) -> Path:
+        return self.data_dir / "cards.json"
 
     @property
     def token_file(self) -> Path:
@@ -342,6 +404,10 @@ class Settings:
         ha_url = ha_url.rstrip("/")
 
         ha_dark = None if _str(env, "HA_DARK") == "" else _bool(env, "HA_DARK")
+
+        layout = _str(env, "LAYOUT").lower() or "dashboard"
+        if layout not in LAYOUTS:
+            raise ConfigError(f"LAYOUT must be one of {', '.join(LAYOUTS)}, got {layout!r}")
 
         style = _str(env, "STYLE").lower() or "blur"
         if style not in STYLES:
@@ -385,13 +451,22 @@ class Settings:
         if quality > 100:
             raise ConfigError(f"JPEG_QUALITY must be <= 100, got {quality}")
 
+        time_zone = _str(env, "TIME_ZONE")
+        if time_zone:
+            try:
+                ZoneInfo(time_zone)
+            except Exception:  # noqa: BLE001 - any lookup error means an invalid name
+                raise ConfigError(f"TIME_ZONE: unknown time zone {time_zone!r}") from None
+
         return cls(
+            layout=layout,
             target_url=target_url,
             ha_token=ha_token,
             ha_url=ha_url,
             ha_theme=_str(env, "HA_THEME"),
             ha_dark=ha_dark,
             ha_language=_str(env, "HA_LANGUAGE"),
+            time_zone=time_zone,
             hide_chrome=_bool(env, "HIDE_CHROME", True),
             wait_selector=wait_selector,
             viewport=parse_size(_str(env, "VIEWPORT"), "VIEWPORT"),

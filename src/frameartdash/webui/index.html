@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FrameArtDash</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/editor.css">
+<style>@font-face{font-family:'Material Design Icons';src:url('/static/mdi.woff2') format('woff2');font-display:block}</style>
 <style>
   :root {
     --bg:#0e1014; --panel:#14171c; --card:#191d23; --line:rgba(235,231,224,.09); --line2:rgba(235,231,224,.16);
@@ -97,6 +99,7 @@
   .advanced-toggle { margin:24px 0 12px; }
   .adv { display:none; }
   .show-adv .adv { display:block; }
+  .mode-cards .only-dashboard { display:none !important; }
   .savebar { display:flex; align-items:center; gap:14px; margin-top:28px; padding-top:20px; border-top:1px solid var(--line); }
   .msg { font-size:14px; color:var(--muted); }
   .msg.ok { color:var(--ok); } .msg.bad { color:var(--bad); }
@@ -174,6 +177,26 @@
     </aside>
   </div>
 
+  <section id="cardsSection" hidden>
+    <h2>Card layout</h2>
+    <div class="editor">
+      <div>
+        <div class="ed-toolbar">
+          <select id="edAdd" aria-label="Add card"></select>
+          <label class="switch"><input type="checkbox" id="edSnap" checked> Snap</label>
+          <button class="btn small" type="button" id="edRefresh">Refresh data</button>
+          <span class="spacer"></span>
+          <span class="ed-status" id="edStatus">Changes are saved automatically</span>
+        </div>
+        <div class="ed-stage" id="edStage" tabindex="0"><div class="ed-overlay" id="edOverlay"></div></div>
+        <div class="ed-hint">Drag to move, handles to resize. <kbd>←↑→↓</kbd> nudge (<kbd>Shift</kbd> = more),
+          <kbd>Alt</kbd> while dragging disables snapping, <kbd>Del</kbd> removes, <kbd>Ctrl/⌘ D</kbd> duplicates.
+          Use <b>Render preview</b> above for the exact 4K picture.</div>
+      </div>
+      <aside class="ed-side" id="edSide"></aside>
+    </div>
+  </section>
+
   <section>
     <h2>Settings</h2>
     <div class="tabs" id="tabs"></div>
@@ -205,6 +228,7 @@
 
 <dialog id="zoom"><img id="zoomImg" alt=""></dialog>
 
+<script src="/static/editor.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let schema = null, status = null, selectedBg = "", activeTab = null;
@@ -237,6 +261,9 @@ async function loadStatus() {
   for (const b of ["refreshBtn", "previewBtn"]) $(b).disabled = status.busy;
 
   $("testPill").classList.toggle("show", !!status.dry_run);
+  const cards = status.layout === "cards";
+  if (cards && $("cardsSection").hidden) { $("cardsSection").hidden = false; window.FAD_editor.init(); }
+  else if (!cards) $("cardsSection").hidden = true;
   const hist = status.history || [];
   const pv = status.preview;
   // Show a new preview as soon as it arrives (after the first load), and default to
@@ -362,7 +389,7 @@ $("rotateKey").onclick = async () => {
 // -- settings ----------------------------------------------------------------
 function fieldHtml(f, value, secretSet) {
   const id = "f_" + f.key, help = f.help ? `<div class="help">${esc(f.help)}</div>` : "";
-  const cls = "field" + (f.advanced ? " adv" : "");
+  const cls = "field" + (f.advanced ? " adv" : "") + (f.only ? " only-" + f.only : "");
   let input;
   if (f.kind === "bool") {
     const on = String(value).toLowerCase() === "true";
@@ -422,6 +449,10 @@ async function loadSettings() {
     loadStatus();
   };
   renderBackgrounds(schema.backgrounds);
+  const layoutSel = $("f_LAYOUT");
+  const applyMode = () => panels.classList.toggle("mode-cards", layoutSel && layoutSel.value === "cards");
+  if (layoutSel) layoutSel.addEventListener("change", applyMode);
+  applyMode();
   loadStatus();
 }
 

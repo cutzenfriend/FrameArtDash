@@ -82,10 +82,48 @@ async def render(settings: Settings) -> bytes:
         raise RenderError(str(e).splitlines()[0]) from e
 
 
+async def render_html(settings: Settings, html: str, timezone_id: str | None = None) -> bytes:
+    """Render a self-contained page (the card layout) at the output size."""
+    try:
+        return await asyncio.wait_for(
+            _render_html(settings, html, timezone_id), timeout=settings.render_timeout
+        )
+    except TimeoutError:
+        raise RenderError(f"rendering took longer than {settings.render_timeout}s") from None
+    except PlaywrightError as e:
+        raise RenderError(str(e).splitlines()[0]) from e
+
+
+async def _render_html(settings: Settings, html: str, timezone_id: str | None) -> bytes:
+    from frameartdash.cards.html import CANVAS
+
+    started = time.monotonic()
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(args=["--disable-dev-shm-usage", "--hide-scrollbars"])
+        try:
+            context = await browser.new_context(
+                viewport={"width": CANVAS[0], "height": CANVAS[1]},
+                device_scale_factor=settings.output_size[0] / CANVAS[0],
+                timezone_id=timezone_id,
+            )
+            page = await context.new_page()
+            page.set_default_timeout(settings.render_timeout * 1000)
+            await page.set_content(html, wait_until="load")
+            await page.evaluate("document.fonts.ready.then(() => true)")
+            png = await page.screenshot(type="png", animations="disabled")
+        finally:
+            await browser.close()
+    log.info("Rendered card layout in %.1fs", time.monotonic() - started)
+    return png
+
+
 async def _render(settings: Settings) -> bytes:
+    from frameartdash.ha import resolve
+
     started = time.monotonic()
     width, height = settings.viewport
     timeout_ms = settings.render_timeout * 1000
+    timezone_id, _ = await resolve(settings)
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(args=["--disable-dev-shm-usage", "--hide-scrollbars"])
@@ -100,6 +138,7 @@ async def _render(settings: Settings) -> bytes:
                 ),
                 extra_http_headers=settings.extra_headers or None,
                 color_scheme="dark" if settings.ha_dark is not False else "light",
+                timezone_id=timezone_id,
             )
             if settings.ha_mode:
                 await context.add_init_script(

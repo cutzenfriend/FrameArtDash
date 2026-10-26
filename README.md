@@ -12,6 +12,8 @@ FrameArtDash is a small Docker service. On a schedule it renders a Home Assistan
                                                                           select new → delete old
 ```
 
+![Live cards on a Monet painting](docs/cards.jpg)
+
 > [!NOTE]
 > The Frame's Art Mode API is unofficial and may break with firmware updates. FrameArtDash uses
 > [`samsungframetv`](https://github.com/NickWaterton/samsung-tv-ws-api) by Nick Waterton, which
@@ -19,6 +21,7 @@ FrameArtDash is a small Docker service. On a schedule it renders a Home Assistan
 
 ## Features
 
+- **Live cards on your own picture:** place clocks, values, weather, energy flow, calendars, graphs and more anywhere on a background image. Use the drag-and-drop editor in the web UI with frosted glass over the painting. Values come straight from Home Assistant; no dashboard is needed.
 - **Web UI for everything:** dashboard URL, Home Assistant token, TV IP, pairing, look, schedule and background images. The UI shows the image currently on the Frame plus the last three as thumbnails. The only container variable you need is a password.
 - **Preview without the TV:** render exactly what would be uploaded (full 4K, plus the raw browser screenshot) while the TV is off. Saving settings always renders a fresh preview, and *test mode* keeps the TV out of it entirely.
 - **Live dashboards:** a Home Assistant long-lived access token is injected into the browser, so no login or OAuth is needed. Header and sidebar are hidden automatically.
@@ -70,6 +73,37 @@ Open `http://<docker-host>:8080` and sign in with `ADMIN_PASSWORD`.
 
 If `ADMIN_PASSWORD` is not set, a random password is generated on first start. It is printed in the container log and stored in `/data/admin-password.txt`.
 
+## Two ways to fill the Frame
+
+**Cards** (*Content = cards*): pick a background image under *Look*, then arrange cards in the **Card layout** editor that appears in the web UI.
+- Drag a card to move it and use the handles to resize it. Edges and center lines snap.
+- On the right you pick entities (with search and live values), texts, icons and the card style: *glass*, *solid*, *outline*, or *none* (text with a shadow straight on the picture).
+- Changes are saved automatically. **Render preview** shows the exact 4K picture without touching the TV.
+
+| Card | Shows |
+|---|---|
+| Clock, Date | Current time and date in Home Assistant's time zone and language |
+| Countdown | Days until an `input_datetime`, a date sensor, the next calendar event or a fixed date |
+| Text | Headings or sentences with live values: `Outside {sensor.outdoor_temperature}` |
+| Value | Icon, name and value, optionally with a 24 h sparkline |
+| Big number | One value as large as the card allows |
+| Status | On/off, open/closed, locked/unlocked, … highlighted when active |
+| Entity list | Several values in rows |
+| Bar, Gauge | A value between a minimum and a maximum |
+| Graph | History of one or more sensors |
+| Weather | Current conditions plus a daily forecast |
+| Energy flow | Solar, grid, battery (with level) and home, with flow direction |
+| Calendar | Upcoming events of one or more calendars |
+| To-do list | Open items of a to-do list |
+| People | Who is home, with their profile pictures |
+| Now playing | Title, artist and cover art of a media player |
+| Camera | A snapshot at render time |
+| Sun | Sunrise, sunset and the sun's position |
+
+Every card can be shown only while an entity has a given state. For example, *Now playing* can appear only while music plays, or a *Status* card only while a window is open.
+
+**Dashboard** (*Content = dashboard*): FrameArtDash screenshots a Home Assistant dashboard (or any web page) and frames it on a blurred copy of itself, your image or a gradient.
+
 ## Settings
 
 All settings are edited in the web UI and stored in `/data/settings.json` (keep the `data` folder private: it also holds the HA token and the TV token). Every setting can alternatively be given as an environment variable with the same name. A value saved in the UI takes precedence.
@@ -88,12 +122,14 @@ All settings are edited in the web UI and stored in `/data/settings.json` (keep 
 
 | Key | Default | Description |
 |---|---|---|
-| `TARGET_URL` | | Page to render, e.g. `http://ha.local:8123/frame-dash/art` |
-| `HA_TOKEN` | | Home Assistant long-lived access token. Enables Home Assistant mode. |
-| `HA_URL` | origin of `TARGET_URL` | Home Assistant base URL the token belongs to |
+| `LAYOUT` | `dashboard` | `cards` (live cards on your background) or `dashboard` (screenshot of a page) |
+| `TARGET_URL` | | Dashboard mode: page to render, e.g. `http://ha.local:8123/frame-dash/art` |
+| `HA_TOKEN` | | Home Assistant long-lived access token. Enables Home Assistant mode, required for cards. |
+| `HA_URL` | origin of `TARGET_URL` | Home Assistant base URL, e.g. `http://homeassistant.local:8123` |
+| `TIME_ZONE` | from Home Assistant | Time zone for clocks and dates, e.g. `Europe/Berlin` |
 | `HA_THEME` | | Frontend theme to use, e.g. `frame` |
 | `HA_DARK` | | `true`/`false` to force dark/light mode of the theme |
-| `HA_LANGUAGE` | | Frontend language, e.g. `en`, `de` |
+| `HA_LANGUAGE` | from Home Assistant | Language for the HA frontend and card texts (`en`, `de`) |
 | `HIDE_CHROME` | `true` | Hide the Home Assistant sidebar and dashboard header |
 | `WAIT_SELECTOR` | `home-assistant` in HA mode | CSS selector to wait for before taking the screenshot |
 | `VIEWPORT` | `1920x1080` | Browser viewport in CSS pixels |
@@ -214,6 +250,8 @@ pytest
 DATA_DIR=./data ADMIN_PASSWORD=dev fad run   # web UI on http://localhost:8080
 ```
 
+The card layout is stored in `/data/cards.json`. For local development without a Home Assistant instance, `python tests/fake_ha_server.py 8124` serves demo data. Use `HA_URL=http://127.0.0.1:8124` and the token `test-token`.
+
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Bundled icons and fonts are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
