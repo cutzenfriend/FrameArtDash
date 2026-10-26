@@ -22,7 +22,7 @@ COPY --from=build /wheels /wheels
 # in the desktop graphics stack (Mesa/LLVM) and CJK fonts, which the shell never uses.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      libnss3 libnspr4 libatk1.0-0 libatspi2.0-0 libdbus-1-3 libdrm2 libgbm1 \
+      libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libdbus-1-3 libdrm2 libgbm1 \
       libxkbcommon0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
       libxi6 libxrandr2 libasound2 libexpat1 libglib2.0-0 libwayland-server0 \
       fontconfig fonts-liberation fonts-dejavu-core fonts-noto-color-emoji tzdata \
