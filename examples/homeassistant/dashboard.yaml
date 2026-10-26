@@ -1,0 +1,33 @@
+# Example dashboard for the Frame. Create a new dashboard (Settings → Dashboards →
+# Add dashboard, URL "frame-dash"), open the raw configuration editor and paste this.
+# Big, calm tiles read best from across the room.
+views:
+  - title: Frame
+    path: "0"
+    theme: frame
+    type: sections
+    max_columns: 3
+    sections:
+      - cards:
+          - type: clock
+            clock_size: large
+            show_seconds: false
+          - type: weather-forecast
+            entity: weather.home
+            forecast_type: daily
+      - cards:
+          - type: tile
+            entity: sensor.living_room_temperature
+            name: Living room
+          - type: tile
+            entity: sensor.outdoor_temperature
+            name: Outside
+          - type: tile
+            entity: sensor.power_consumption
+            name: Power
+      - cards:
+          - type: history-graph
+            hours_to_show: 24
+            entities:
+              - entity: sensor.outdoor_temperature
+                name: Outside

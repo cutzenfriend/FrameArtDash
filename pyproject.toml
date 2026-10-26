@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "frameartdash"
+dynamic = ["version"]
+description = "Render a Home Assistant dashboard (or any web page) as artwork for the Art Mode of a Samsung The Frame TV."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Domenik Niemietz" }]
+keywords = ["samsung", "the frame", "art mode", "home assistant", "dashboard", "playwright"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 4 - Beta",
+    "Topic :: Home Automation",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    # Must match the Playwright version of the Docker base image.
+    "playwright==1.64.1",
+    "samsungframetv>=4.1.1,<5",
+    "pillow>=11",
+    "imagehash>=4.3",
+    "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.6"]
+
+[project.scripts]
+fad = "frameartdash.cli:main"
+frameartdash = "frameartdash.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/cutzenfriend/FrameArtDash"
+Issues = "https://github.com/cutzenfriend/FrameArtDash/issues"
+
+[tool.hatch.version]
+path = "src/frameartdash/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/frameartdash"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true

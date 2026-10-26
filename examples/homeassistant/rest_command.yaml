@@ -1,0 +1,17 @@
+# configuration.yaml: lets automations push a fresh image right away,
+# e.g. when someone enters the living room or the TV switches to Art Mode.
+rest_command:
+  frameartdash_refresh:
+    url: http://192.168.1.20:8080/refresh
+    method: POST
+    timeout: 5
+
+# Example automation
+# automation:
+#   - alias: Refresh Frame dashboard on presence
+#     triggers:
+#       - trigger: state
+#         entity_id: binary_sensor.living_room_presence
+#         to: "on"
+#     actions:
+#       - action: rest_command.frameartdash_refresh

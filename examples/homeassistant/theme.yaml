@@ -1,0 +1,19 @@
+# Calm dark theme for the Frame. Put it into your themes folder
+# (frontend: themes: !include_dir_merge_named themes) and reload themes.
+frame:
+  modes:
+    dark:
+      primary-background-color: "#0e1014"
+      lovelace-background: "#0e1014"
+      secondary-background-color: "#15181e"
+      card-background-color: "#171b21"
+      ha-card-background: "#171b21"
+      ha-card-border-width: "0px"
+      ha-card-border-radius: "18px"
+      ha-card-box-shadow: none
+      primary-text-color: "#ebe7e0"
+      secondary-text-color: "#9a958d"
+      primary-color: "#c9a96e"
+      accent-color: "#c9a96e"
+      state-icon-color: "#c9a96e"
+      ha-font-size-m: "16px"
