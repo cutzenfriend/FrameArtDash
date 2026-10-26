@@ -13,7 +13,7 @@ from pathlib import Path
 from aiohttp import web
 
 sys.path.insert(0, str(Path(__file__).parent))
-from fake_ha import PIXEL, FakeHA  # noqa: E402
+from fake_ha import FakeHA  # noqa: E402
 
 TOKEN = "test-token"
 
@@ -56,7 +56,11 @@ def build() -> web.Application:
         return web.json_response(await ha.calendar(request.match_info["eid"], None, None))
 
     async def image(request):
-        return web.Response(body=base64.b64decode(PIXEL.split(",", 1)[1]), content_type="image/png")
+        uri = await ha.image(request.path)
+        if uri is None:
+            raise web.HTTPNotFound()
+        mime, data = uri[5:].split(";base64,", 1)
+        return web.Response(body=base64.b64decode(data), content_type=mime)
 
     app.router.add_get("/api/config", config)
     app.router.add_get("/api/states", states)

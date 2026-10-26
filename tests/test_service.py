@@ -160,6 +160,7 @@ async def test_history_keeps_current_plus_three(tmp_path):
     entries = svc.history.entries()
     assert len(entries) == 4
     assert entries[0]["content_id"] == fake.selected
+    assert svc.history.preview_info()["content_id"] == fake.selected
     assert len(list((tmp_path / "history").glob("2026*.jpg"))) == 4
     assert (tmp_path / "history" / "current.jpg").exists()
 

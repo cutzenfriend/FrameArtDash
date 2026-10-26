@@ -340,7 +340,7 @@ function renderStage(hist, pv) {
   }
   const t = encodeURIComponent(pv.time);
   setMat("/api/preview.jpg?t=" + t, "Rendered preview");
-  $("caption").innerHTML = `<span>Rendered <b>${fmtTime(pv.time)}</b> in <b>${pv.seconds} s</b></span><span><b>${pv.size_kb} KB</b> JPEG</span><span>Not uploaded</span>`;
+  $("caption").innerHTML = `<span>Rendered <b>${fmtTime(pv.time)}</b> in <b>${pv.seconds} s</b></span><span><b>${pv.size_kb} KB</b> JPEG</span><span>${pv.content_id ? "Uploaded as <b>" + esc(pv.content_id) + "</b>" : "Not uploaded"}</span>`;
   $("tools").innerHTML = `
     <a class="btn small" href="/api/preview.jpg?t=${t}" target="_blank" rel="noopener">Full size</a>
     <a class="btn small" href="/api/preview.jpg?download=1">Download</a>

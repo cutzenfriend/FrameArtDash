@@ -120,7 +120,7 @@ async def test_ha_client_against_fake_server():
                 "weather", "get_forecasts", {"entity_id": "weather.home", "type": "daily"}
             )
             assert forecast["weather.home"]["forecast"]
-            assert (await ha.image("/api/camera_proxy/camera.einfahrt")).startswith("data:image/png")
+            assert (await ha.image("/api/camera_proxy/camera.einfahrt")).startswith("data:image/jpeg")
         with pytest.raises(HAError, match="401"):
             async with HAClient(base, "wrong") as ha:
                 await ha.states()

@@ -9,4 +9,4 @@ FrameArtDash bundles these assets in `src/frameartdash/webui/static/`:
 | Fraunces (`fraunces.woff2`) | [undercasetype/Fraunces](https://github.com/undercasetype/Fraunces) via Fontsource | SIL Open Font License 1.1 |
 | JetBrains Mono (`jetbrains-mono.woff2`) | [JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono) via Fontsource | SIL Open Font License 1.1 |
 
-The demo screenshot in `docs/` uses *Impression, soleil levant* by Claude Monet (public domain).
+The screenshots in `docs/` use demo data and public-domain paintings: *Impression, soleil levant* and *Woman with a Parasol* by Claude Monet, *Wheatfield with Crows* by Vincent van Gogh and *Wanderer above the Sea of Fog* by Caspar David Friedrich.

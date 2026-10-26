@@ -1,18 +1,31 @@
 # FrameArtDash (FAD)
 
-**Your Home Assistant dashboard as a painting on Samsung The Frame.**
+**Your Home Assistant as a painting on Samsung The Frame.**
 
-FrameArtDash is a small Docker service. On a schedule it renders a Home Assistant dashboard (or any web page) with live data in headless Chromium. It turns the screenshot into a 4K "artwork" and uploads it to the Art Mode of a Samsung The Frame TV. The previous image is removed afterwards, so nothing piles up on the TV.
+![Live Home Assistant cards with frosted glass on Monet's "Impression, soleil levant"](docs/frame-cards.jpg)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/frame-minimal.jpg" alt="Minimal layout: clock and text straight on Van Gogh's Wheatfield with Crows, weather in a glass card"></td>
+    <td width="50%"><img src="docs/frame-serif.jpg" alt="Light glass cards with a serif font on Caspar David Friedrich's Wanderer above the Sea of Fog"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Minimal: text with a shadow, straight on the painting</sub></td>
+    <td align="center"><sub>Light glass, serif font, energy flow and calendar</sub></td>
+  </tr>
+</table>
+
+<p align="center"><sub>Rendered by FrameArtDash in 3840×2160 with demo data. Paintings: Monet, Van Gogh, Friedrich (public domain).</sub></p>
+
+FrameArtDash is a small Docker service for the Art Mode of a Samsung The Frame TV. It places live Home Assistant cards on a painting of your choice, or turns any dashboard into a framed 4K artwork. On a schedule it renders the picture in headless Chromium and uploads it to the TV. Only changed pictures are uploaded, and the previous one is removed afterwards, so nothing piles up on the TV.
 
 ```
  ┌──────────────┐  render   ┌──────────────┐  diff   ┌──────────────┐  push   ┌───────────────┐
- │ HA dashboard │ ────────▶ │  Playwright  │ ──────▶ │    Pillow    │ ──────▶ │ The Frame     │
- │ (any URL)    │           │  screenshot  │         │ 3840×2160    │         │ Art Mode      │
+ │ HA cards or  │ ────────▶ │  Chromium    │ ──────▶ │ 3840×2160    │ ──────▶ │ The Frame     │
+ │ dashboard    │           │  (headless)  │         │ JPEG         │         │ Art Mode      │
  └──────────────┘           └──────────────┘         └──────────────┘         └───────────────┘
                                                                           select new → delete old
 ```
-
-![Live cards on a Monet painting](docs/cards.jpg)
 
 > [!NOTE]
 > The Frame's Art Mode API is unofficial and may break with firmware updates. FrameArtDash uses
@@ -32,6 +45,25 @@ FrameArtDash is a small Docker service. On a schedule it renders a Home Assistan
 - **Doesn't interrupt TV use:** the image is selected with `show=False`. Cycles are skipped when the TV is off, outside the active hours, or (optionally) when it is not in Art Mode.
 - **Home Assistant integration:** `POST /refresh` with an API key for automations, `GET /healthz` for monitoring.
 - **Multi-arch image:** `linux/amd64` and `linux/arm64` on GHCR.
+
+## Web UI
+
+Everything is configured in the browser: what is on the Frame right now, the last uploads, previews without the TV, the card editor, pairing and all settings.
+
+![Web UI: the picture currently on the Frame, actions, last run and previously shown pictures](docs/ui-main.jpg)
+
+![Card editor: drag and resize live cards on the background, edit them on the right](docs/ui-editor.jpg)
+
+<table>
+  <tr>
+    <td width="68%"><img src="docs/ui-settings.jpg" alt="Settings with uploaded background images"></td>
+    <td width="32%"><img src="docs/ui-phone.jpg" alt="The web UI on a phone"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Upload and choose background images</sub></td>
+    <td align="center"><sub>Works on the phone, too</sub></td>
+  </tr>
+</table>
 
 ## Quick start
 

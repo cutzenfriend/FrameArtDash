@@ -165,6 +165,7 @@ class Service:
             state.last_upload = now.isoformat(timespec="seconds")
             self.store.save(state)
             await asyncio.to_thread(self.history.add, image, content_id, now)
+            self.history.mark_preview_uploaded(content_id)
 
             deleted = await self._delete_stale(frame, state)
             return CycleResult("uploaded", content_id=content_id, distance=distance, deleted=deleted)

@@ -70,6 +70,18 @@ class History:
         except OSError as e:
             log.warning("Could not store preview: %s", e)
 
+    def mark_preview_uploaded(self, content_id: str) -> None:
+        info = self.preview_info()
+        if info is None:
+            return
+        info["content_id"] = content_id
+        try:
+            tmp = self.dir / "preview.json.tmp"
+            tmp.write_text(json.dumps(info, indent=2))
+            os.replace(tmp, self.dir / "preview.json")
+        except OSError as e:
+            log.warning("Could not update preview info: %s", e)
+
     def preview_info(self) -> dict | None:
         try:
             return json.loads((self.dir / "preview.json").read_text())

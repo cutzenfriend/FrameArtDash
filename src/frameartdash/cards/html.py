@@ -799,6 +799,9 @@ def build_page(layout: dict, data: CardData, background: str, inline_assets: boo
     opacity = max(0, min(100, to_float(s.get("opacity")) or 0)) / 100
     dim = max(0, min(90, to_float(s.get("dim")) or 0)) / 100
     shadow = "0 18px 50px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.18)" if s.get("shadow", True) else "none"
+    # Text without a card needs a halo that contrasts with the text color.
+    dark_text = (0.299 * r + 0.587 * g + 0.114 * b) < 128
+    halo = "255,255,255" if dark_text else "0,0,0"
     cards = [c for c in layout["cards"] if edit or visible(c, data.states)]
     body = "".join(render_card(c, data, s.get("card_style", "glass"), edit) for c in cards)
     font = FONTS.get(s.get("font"), FONTS["sans"])
@@ -807,7 +810,7 @@ def build_page(layout: dict, data: CardData, background: str, inline_assets: boo
         (
             f"--font:{font};--text:rgb({r},{g},{b});--text-rgb:{r},{g},{b};--accent:{escape(s.get('accent') or '#e3c27a')};"
             f"--tint:{tint[0]},{tint[1]},{tint[2]};--alpha:{opacity:.2f};--blur:{to_float(s.get('blur')) or 0}px;"
-            f"--radius:{to_float(s.get('radius')) or 0}px;--shadow:{shadow};--dim:{dim:.2f};"
+            f"--radius:{to_float(s.get('radius')) or 0}px;--shadow:{shadow};--dim:{dim:.2f};--halo:{halo};"
         ),
     )
     return (
@@ -837,7 +840,7 @@ body{position:relative;background-size:cover!important;background-position:cente
   -webkit-backdrop-filter:blur(var(--blur)) saturate(140%);border:1px solid rgba(255,255,255,.14);box-shadow:var(--shadow)}
 .s-solid{background:rgba(var(--tint),.92);box-shadow:var(--shadow)}
 .s-outline{border:1.5px solid rgba(var(--text-rgb),.55)}
-.s-none{text-shadow:0 2px 14px rgba(0,0,0,.55),0 1px 3px rgba(0,0,0,.4)}
+.s-none{text-shadow:0 2px 14px rgba(var(--halo),.55),0 1px 3px rgba(var(--halo),.4)}
 .s-none .inner{padding:.4em .2em}
 .a-center .inner{align-items:center;text-align:center}.a-right .inner{align-items:flex-end;text-align:right}
 .accent{color:var(--accent)}

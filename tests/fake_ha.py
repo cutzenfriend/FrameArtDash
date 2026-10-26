@@ -100,6 +100,29 @@ STATES = [
 PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN8sGHjfwAHLwM3kU0VKgAAAABJRU5ErkJggg=="
 
 
+def _artwork(seed: str) -> str:
+    """A small generated picture (album cover, camera) so demos do not show a blank pixel."""
+    import base64
+    import io
+    import random
+
+    from PIL import Image, ImageDraw, ImageFilter
+
+    rnd = random.Random(seed)
+    img = Image.new("RGB", (320, 240 if "camera" in seed else 320), (40, 52, 70))
+    draw = ImageDraw.Draw(img)
+    for _ in range(14):
+        x, y, r = rnd.randint(0, 320), rnd.randint(0, 320), rnd.randint(30, 140)
+        color = rnd.choice(
+            [(227, 194, 122), (143, 182, 217), (229, 154, 140), (159, 211, 167), (70, 90, 130)]
+        )
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=color)
+    img = img.filter(ImageFilter.GaussianBlur(18))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
 class FakeHA:
     def __init__(self, *args, **kwargs) -> None:
         self.calls: list[str] = []
@@ -186,7 +209,9 @@ class FakeHA:
 
     async def image(self, path):
         self.calls.append("image")
-        return PIXEL
+        if "image/serve" in path:
+            return None  # people fall back to their initials
+        return _artwork(path)
 
 
 DEMO_LAYOUT = {
