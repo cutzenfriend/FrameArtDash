@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import io
 
-import imagehash
 from PIL import Image, ImageColor, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 from frameartdash.config import Settings
 
-HASH_SIZE = 16
+HASH_SIZE = 16  # 16x16 = 256 bit
+HASH_PREFIX = "d"  # marks difference hashes; hashes of other formats are not comparable
 
 
 def load(data: bytes) -> Image.Image:
@@ -19,14 +19,21 @@ def load(data: bytes) -> Image.Image:
 
 
 def image_hash(image: Image.Image) -> str:
-    return str(imagehash.phash(image, hash_size=HASH_SIZE))
+    """Difference hash: one bit per pixel, set if it is brighter than its right neighbour."""
+    small = image.convert("L").resize((HASH_SIZE + 1, HASH_SIZE), Image.Resampling.LANCZOS)
+    px = small.load()
+    bits = 0
+    for y in range(HASH_SIZE):
+        for x in range(HASH_SIZE):
+            bits = (bits << 1) | (px[x + 1, y] > px[x, y])
+    return HASH_PREFIX + f"{bits:0{HASH_SIZE * HASH_SIZE // 4}x}"
 
 
 def hash_distance(a: str | None, b: str | None) -> int | None:
     """Hamming distance between two stored hashes, None if not comparable."""
-    if not a or not b or len(a) != len(b):
+    if not a or not b or len(a) != len(b) or not a.startswith(HASH_PREFIX) or not b.startswith(HASH_PREFIX):
         return None
-    return imagehash.hex_to_hash(a) - imagehash.hex_to_hash(b)
+    return (int(a[1:], 16) ^ int(b[1:], 16)).bit_count()
 
 
 def compose(dashboard: Image.Image, settings: Settings) -> Image.Image:

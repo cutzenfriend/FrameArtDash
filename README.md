@@ -209,7 +209,7 @@ The image's entrypoint is `fad`, and `run` is the default command. The other com
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
-playwright install chromium
+playwright install --only-shell chromium
 pytest
 DATA_DIR=./data ADMIN_PASSWORD=dev fad run   # web UI on http://localhost:8080
 ```

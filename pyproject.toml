@@ -23,7 +23,6 @@ dependencies = [
     "playwright==1.64.1",
     "samsungframetv>=4.1.1,<5",
     "pillow>=11",
-    "imagehash>=4.3",
     "aiohttp>=3.9",
 ]
 

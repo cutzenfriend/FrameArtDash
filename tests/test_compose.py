@@ -38,3 +38,16 @@ def test_hash_distance():
     assert compose.hash_distance(None, a) is None
     b = compose.image_hash(_dashboard("88.8"))
     assert compose.hash_distance(a, b) > 0
+
+
+def test_hash_ignores_old_format():
+    a = compose.image_hash(_dashboard("21.4"))
+    assert a.startswith("d") and len(a) == 65
+    # A perceptual hash from an earlier version is not comparable: upload once.
+    assert compose.hash_distance("f" * 64, a) is None
+
+
+def test_hash_sees_small_number_change():
+    a = compose.image_hash(_dashboard("21.4"))
+    b = compose.image_hash(_dashboard("21.7"))
+    assert compose.hash_distance(a, b) > 0
