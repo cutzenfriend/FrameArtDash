@@ -5,12 +5,8 @@ services:
     restart: unless-stopped
     environment:
       TZ: Europe/Berlin
-      TARGET_URL: http://192.168.1.10:8123/frame-dash/art
-      HA_TOKEN: ${HA_TOKEN}
-      FRAME_HOST: 192.168.1.50
-      INTERVAL_MIN: 10
-      ACTIVE_HOURS: "06-23"
-      STYLE: blur
+      # Password for the web UI on http://<docker-host>:8080
+      ADMIN_PASSWORD: ${FAD_PASSWORD}
     volumes:
       - ./data:/data
     ports:

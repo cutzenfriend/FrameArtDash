@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FrameArtDash</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg:#0e1014; --panel:#14171c; --card:#191d23; --line:rgba(235,231,224,.09); --line2:rgba(235,231,224,.16);
+    --text:#ebe7e0; --muted:#9a958d; --faint:#6b675f; --gold:#c9a96e; --gold-soft:rgba(201,169,110,.14);
+    --ok:#8fb38a; --warn:#d6b25e; --bad:#d9826b;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  html { color-scheme:dark; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 var(--sans); }
+  a { color:var(--gold); }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  .wrap { max-width:1240px; margin:0 auto; padding:0 24px 64px; }
+
+  header { position:sticky; top:0; z-index:5; background:rgba(14,16,20,.86); backdrop-filter:blur(12px); border-bottom:1px solid var(--line); }
+  header .wrap { display:flex; align-items:center; gap:16px; padding-top:14px; padding-bottom:14px; }
+  .brand { display:flex; align-items:center; gap:10px; font:500 20px var(--serif); letter-spacing:.01em; }
+  .brand svg { width:26px; height:26px; }
+  .brand small { font:11px var(--sans); color:var(--muted); letter-spacing:.14em; text-transform:uppercase; margin-left:4px; }
+  .spacer { flex:1; }
+  .pill { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border:1px solid var(--line2); border-radius:999px; font-size:13px; color:var(--muted); white-space:nowrap; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--faint); flex:none; }
+  .dot.ok { background:var(--ok); } .dot.warn { background:var(--warn); } .dot.bad { background:var(--bad); }
+  .dot.busy { background:var(--gold); animation:pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity:.35; } }
+
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:9px 16px; border-radius:10px; border:1px solid var(--line2); background:transparent; color:var(--text); cursor:pointer; font-size:14px; white-space:nowrap; }
+  .btn:hover { border-color:var(--gold); }
+  .btn.primary { background:var(--gold); border-color:var(--gold); color:#16130d; font-weight:600; }
+  .btn.primary:hover { filter:brightness(1.08); }
+  .btn.small { padding:6px 12px; font-size:13px; }
+  .btn.ghost { border-color:transparent; color:var(--muted); }
+  .btn.ghost:hover { color:var(--text); }
+  .btn[disabled] { opacity:.5; cursor:default; }
+  .btn.danger:hover { border-color:var(--bad); color:var(--bad); }
+
+  .banner { margin:24px 0 0; padding:14px 18px; border:1px solid rgba(214,178,94,.35); background:rgba(214,178,94,.08); border-radius:12px; color:#e5d3a4; display:none; }
+  .banner.show { display:block; }
+
+  .stage { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:28px; margin-top:28px; align-items:start; }
+  .frame { position:relative; padding:18px; background:linear-gradient(145deg,#2a2621,#14120f); border-radius:6px; box-shadow:0 30px 80px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.06); }
+  .frame .mat { background:#0b0c0e; aspect-ratio:16/9; display:grid; place-items:center; overflow:hidden; box-shadow:inset 0 0 22px rgba(0,0,0,.8); }
+  .frame img { width:100%; height:100%; object-fit:cover; display:block; }
+  .empty { color:var(--faint); text-align:center; padding:24px; font-size:14px; }
+  .empty b { display:block; font:400 22px var(--serif); color:var(--muted); margin-bottom:6px; }
+  .caption { display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:14px; color:var(--muted); font-size:13px; }
+  .caption b { color:var(--text); font-weight:500; }
+
+  .side h2, section h2 { font:500 13px var(--sans); text-transform:uppercase; letter-spacing:.14em; color:var(--muted); margin:0 0 14px; }
+  .actions { display:grid; gap:10px; margin-bottom:26px; }
+  .actions .btn { justify-content:center; }
+  .result { font-size:13px; color:var(--muted); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:26px; }
+  .result .status { display:flex; align-items:center; gap:8px; color:var(--text); font-weight:500; margin-bottom:4px; }
+  .history { display:grid; gap:12px; }
+  .thumb { display:grid; grid-template-columns:120px 1fr; gap:12px; align-items:center; font-size:13px; color:var(--muted); }
+  .thumb img { width:120px; aspect-ratio:16/9; object-fit:cover; border-radius:4px; border:1px solid var(--line2); cursor:zoom-in; background:#0b0c0e; }
+  .thumb b { display:block; color:var(--text); font-weight:500; }
+
+  .previewbox { margin-top:24px; display:none; }
+  .previewbox.show { display:block; }
+  .previewbox img { width:100%; border-radius:6px; border:1px solid var(--line2); }
+
+  section { margin-top:56px; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:24px; overflow-x:auto; }
+  .tab { background:none; border:0; border-bottom:2px solid transparent; padding:10px 16px; color:var(--muted); cursor:pointer; font-size:15px; margin-bottom:-1px; white-space:nowrap; }
+  .tab.active { color:var(--text); border-color:var(--gold); }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:18px 24px; }
+  .field label { display:block; font-size:13px; color:var(--text); margin-bottom:6px; }
+  .field .help { font-size:12px; color:var(--faint); margin-top:5px; }
+  .field input[type=text], .field input[type=password], .field input[type=number], .field select, .field textarea {
+    width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--line2); background:#0f1216; }
+  .field textarea { min-height:84px; font-family:var(--mono); font-size:13px; resize:vertical; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline:2px solid var(--gold); outline-offset:1px; border-color:transparent; }
+  .switch { display:flex; align-items:center; gap:10px; cursor:pointer; padding-top:6px; }
+  .switch input { appearance:none; width:40px; height:22px; border-radius:999px; background:#2a2e35; position:relative; cursor:pointer; transition:background .15s; flex:none; }
+  .switch input::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#ebe7e0; transition:transform .15s; }
+  .switch input:checked { background:var(--gold); }
+  .switch input:checked::after { transform:translateX(18px); }
+  .secret-state { font-size:12px; color:var(--ok); margin-left:6px; }
+  .advanced-toggle { margin:24px 0 12px; }
+  .adv { display:none; }
+  .show-adv .adv { display:block; }
+  .savebar { display:flex; align-items:center; gap:14px; margin-top:28px; padding-top:20px; border-top:1px solid var(--line); }
+  .msg { font-size:14px; color:var(--muted); }
+  .msg.ok { color:var(--ok); } .msg.bad { color:var(--bad); }
+
+  .box { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; margin-top:24px; }
+  .box h3 { margin:0 0 6px; font:500 18px var(--serif); }
+  .box p { margin:0 0 14px; color:var(--muted); font-size:14px; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+
+  .bgs { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px; margin-top:14px; }
+  .bg { position:relative; border-radius:10px; overflow:hidden; border:2px solid transparent; cursor:pointer; background:#0b0c0e; }
+  .bg img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; }
+  .bg.selected { border-color:var(--gold); }
+  .bg .name { font-size:12px; color:var(--muted); padding:6px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bg .del { position:absolute; top:6px; right:6px; background:rgba(14,16,20,.8); border:0; color:var(--text); border-radius:6px; width:26px; height:26px; cursor:pointer; }
+  .bg .del:hover { color:var(--bad); }
+  .drop { border:1.5px dashed var(--line2); border-radius:10px; display:grid; place-items:center; text-align:center; color:var(--muted); font-size:13px; padding:12px; aspect-ratio:16/10; cursor:pointer; }
+  .drop.over { border-color:var(--gold); color:var(--gold); background:var(--gold-soft); }
+
+  code, pre { font-family:var(--mono); font-size:13px; }
+  pre { background:#0b0d10; border:1px solid var(--line); border-radius:10px; padding:14px; overflow-x:auto; margin:0; }
+  .key { display:flex; gap:8px; align-items:center; }
+  .key code { background:#0b0d10; border:1px solid var(--line); border-radius:8px; padding:8px 10px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .logs { max-height:340px; overflow:auto; white-space:pre-wrap; color:#b9b4ab; }
+
+  dialog { border:0; padding:0; background:transparent; max-width:min(1400px,94vw); }
+  dialog::backdrop { background:rgba(0,0,0,.82); }
+  dialog img { width:100%; display:block; border-radius:4px; }
+
+  @media (max-width: 900px) {
+    .stage { grid-template-columns:1fr; }
+    .wrap { padding:0 16px 48px; }
+    header .pill.hide-sm { display:none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="5" width="28" height="22" rx="2" fill="#0f1216" stroke="#c9a96e" stroke-width="2"/><rect x="7" y="10" width="18" height="12" fill="#c9a96e" opacity=".85"/></svg>
+      FrameArtDash<small id="version"></small>
+    </div>
+    <div class="spacer"></div>
+    <span class="pill hide-sm" id="nextPill"><span class="dot" id="loopDot"></span><span id="nextText">…</span></span>
+    <form method="post" action="/logout"><button class="btn ghost small" type="submit">Sign out</button></form>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="banner" id="setupBanner">Welcome! Enter the dashboard URL and Home Assistant token under <b>Source</b>, then the TV's IP address under <b>TV</b> and pair it.</div>
+
+  <div class="stage">
+    <div>
+      <div class="frame"><div class="mat" id="currentMat"><div class="empty"><b>Nothing on the Frame yet</b>The first uploaded image will appear here.</div></div></div>
+      <div class="caption" id="caption"></div>
+      <div class="previewbox" id="previewBox">
+        <h2 style="font:500 13px var(--sans);text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:0 0 12px">Preview (not uploaded)</h2>
+        <img id="previewImg" alt="Rendered preview">
+      </div>
+    </div>
+    <aside class="side">
+      <h2>Actions</h2>
+      <div class="actions">
+        <button class="btn primary" id="refreshBtn">Push to the Frame now</button>
+        <button class="btn" id="previewBtn">Render preview</button>
+        <button class="btn" id="tvBtn">Check TV</button>
+      </div>
+      <h2>Last run</h2>
+      <div class="result" id="result">No run yet.</div>
+      <h2>Previously shown</h2>
+      <div class="history" id="history"><div class="empty" style="padding:8px 0;text-align:left">No history yet.</div></div>
+    </aside>
+  </div>
+
+  <section>
+    <h2>Settings</h2>
+    <div class="tabs" id="tabs"></div>
+    <form id="settingsForm" autocomplete="off">
+      <div id="panels"></div>
+      <div class="advanced-toggle"><label class="switch"><input type="checkbox" id="advToggle"> Show advanced settings</label></div>
+      <div class="savebar">
+        <button class="btn primary" type="submit">Save settings</button>
+        <span class="msg" id="saveMsg"></span>
+      </div>
+    </form>
+  </section>
+
+  <section>
+    <h2>Home Assistant automation</h2>
+    <div class="box">
+      <h3>Refresh from an automation</h3>
+      <p>Lets Home Assistant push a fresh image right away, e.g. when someone enters the room. Add this to <code>configuration.yaml</code> and call <code>rest_command.frameartdash_refresh</code>.</p>
+      <div class="key"><code id="apiKey">…</code><button class="btn small" id="copyKey">Copy</button><button class="btn small danger" id="rotateKey">New key</button></div>
+      <pre id="restSnippet" style="margin-top:14px"></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <pre class="logs" id="logs"></pre>
+  </section>
+</div>
+
+<dialog id="zoom"><img id="zoomImg" alt=""></dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let schema = null, status = null, selectedBg = "", activeTab = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { credentials: "same-origin", ...opts });
+  if (res.status === 401) { location.href = "/login"; throw new Error("not logged in"); }
+  const type = res.headers.get("content-type") || "";
+  const body = type.includes("json") ? await res.json() : null;
+  if (!res.ok) throw new Error((body && body.error) || res.statusText);
+  return body;
+}
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "–";
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const dotClass = (st) => ({ uploaded: "ok", unchanged: "ok", rendered: "ok", skipped: "warn", error: "bad" })[st] || "";
+
+function zoom(src) { $("zoomImg").src = src; $("zoom").showModal(); }
+$("zoom").addEventListener("click", () => $("zoom").close());
+
+// -- status ------------------------------------------------------------------
+async function loadStatus() {
+  try { status = await api("/api/status"); } catch { return; }
+  $("version").textContent = "v" + status.version;
+  $("setupBanner").classList.toggle("show", !status.configured || !status.frame_host);
+
+  $("loopDot").className = "dot " + (status.busy ? "busy" : dotClass(status.last_result?.status));
+  $("nextText").textContent = status.busy ? "Working…" : status.next_run
+    ? "Next run " + new Date(status.next_run).toLocaleTimeString([], { timeStyle: "short" }) : "Idle";
+  for (const b of ["refreshBtn", "previewBtn"]) $(b).disabled = status.busy;
+
+  const hist = status.history || [];
+  const mat = $("currentMat");
+  if (hist.length) {
+    const src = "/api/history/current.jpg?t=" + encodeURIComponent(hist[0].time);
+    if (mat.dataset.src !== src) {
+      mat.innerHTML = `<img src="${src}" alt="Image currently on the Frame">`;
+      mat.dataset.src = src;
+      mat.querySelector("img").onclick = () => zoom(src);
+    }
+    $("caption").innerHTML = `<span>On the Frame since <b>${fmtTime(hist[0].time)}</b></span><span>Content ID <b>${esc(hist[0].content_id)}</b></span>`;
+  }
+  const prev = hist.slice(1, 4);
+  $("history").innerHTML = prev.length ? prev.map((e) =>
+    `<div class="thumb"><img src="/api/history/${encodeURIComponent(e.file)}" alt="" data-zoom><div><b>${fmtTime(e.time)}</b>${esc(e.content_id)}</div></div>`
+  ).join("") : `<div class="empty" style="padding:8px 0;text-align:left">No history yet.</div>`;
+  $("history").querySelectorAll("img[data-zoom]").forEach((img) => img.onclick = () => zoom(img.src));
+
+  const r = status.last_result;
+  $("result").innerHTML = r
+    ? `<div class="status"><span class="dot ${dotClass(r.status)}"></span>${esc(r.status)}</div>${esc(r.reason || (r.content_id ? "Shown: " + r.content_id : ""))}<div style="margin-top:4px;color:var(--faint)">${fmtTime(r.finished)}</div>`
+    : "No run yet.";
+
+  const p = status.pairing;
+  if ($("pairMsg")) {
+    $("pairMsg").textContent = p.message || (status.paired ? "Paired – token stored." : "Not paired yet.");
+    $("pairMsg").className = "msg " + (p.state === "error" ? "bad" : (p.state === "paired" || (status.paired && p.state === "idle")) ? "ok" : "");
+    $("pairBtn").disabled = p.state === "waiting";
+  }
+  $("apiKey").textContent = status.api_key;
+  $("restSnippet").textContent =
+`rest_command:
+  frameartdash_refresh:
+    url: ${location.origin}/refresh
+    method: POST
+    headers:
+      Authorization: "Bearer ${status.api_key}"`;
+}
+
+async function loadLogs() {
+  try {
+    const { lines } = await api("/api/logs");
+    const el = $("logs"), atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 10;
+    el.textContent = lines.join("\n") || "No log lines yet.";
+    if (atBottom) el.scrollTop = el.scrollHeight;
+  } catch {}
+}
+
+// -- actions -----------------------------------------------------------------
+$("refreshBtn").onclick = async () => {
+  try { await api("/api/refresh", { method: "POST" }); } catch (e) { alert(e.message); }
+  setTimeout(loadStatus, 300);
+};
+$("previewBtn").onclick = async () => {
+  const btn = $("previewBtn"); btn.disabled = true; btn.textContent = "Rendering…";
+  try {
+    await api("/api/preview", { method: "POST" });
+    $("previewImg").src = "/api/preview.jpg?t=" + Date.now();
+    $("previewBox").classList.add("show");
+    $("previewImg").onclick = () => zoom($("previewImg").src);
+  } catch (e) { alert("Preview failed: " + e.message); }
+  btn.disabled = false; btn.textContent = "Render preview"; loadStatus();
+};
+$("tvBtn").onclick = async () => {
+  const btn = $("tvBtn"); btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    const tv = await api("/api/tv");
+    let text = `TV: ${tv.power}`;
+    if (tv.current) text += `\nCurrent art: ${tv.current}`;
+    if (tv.my_photos !== undefined) text += `\nUploaded pictures on TV: ${tv.my_photos}`;
+    if (tv.error) text += `\n${tv.error}`;
+    alert(text);
+  } catch (e) { alert(e.message); }
+  btn.disabled = false; btn.textContent = "Check TV";
+};
+$("copyKey").onclick = () => navigator.clipboard?.writeText($("restSnippet").textContent);
+$("rotateKey").onclick = async () => {
+  if (!confirm("Create a new API key? The old one stops working.")) return;
+  await api("/api/api-key", { method: "POST" }); loadStatus();
+};
+
+// -- settings ----------------------------------------------------------------
+function fieldHtml(f, value, secretSet) {
+  const id = "f_" + f.key, help = f.help ? `<div class="help">${esc(f.help)}</div>` : "";
+  const cls = "field" + (f.advanced ? " adv" : "");
+  let input;
+  if (f.kind === "bool") {
+    const on = String(value).toLowerCase() === "true";
+    return `<div class="${cls}"><label class="switch"><input type="checkbox" id="${id}" data-key="${f.key}" ${on ? "checked" : ""}> ${esc(f.label)}</label>${help}</div>`;
+  }
+  if (f.kind === "select") {
+    input = `<select id="${id}" data-key="${f.key}">${f.options.map((o) =>
+      `<option value="${esc(o)}" ${o === value ? "selected" : ""}>${o === "" ? "Default" : esc(o)}</option>`).join("")}</select>`;
+  } else if (f.kind === "textarea") {
+    input = `<textarea id="${id}" data-key="${f.key}" spellcheck="false">${esc(value)}</textarea>`;
+  } else if (f.kind === "secret") {
+    input = `<input type="password" id="${id}" data-key="${f.key}" placeholder="${secretSet ? "•••••••• (unchanged)" : ""}" autocomplete="new-password">`;
+    if (secretSet) input += `<div class="help"><span class="secret-state">● stored</span> · <a href="#" data-clear="${f.key}">remove</a></div>`;
+  } else if (f.kind === "background") {
+    return `<div class="${cls}" style="grid-column:1/-1"><label>${esc(f.label)}</label>${help}<div class="bgs" id="bgs"></div></div>`;
+  } else {
+    input = `<input type="${f.kind === "number" ? "number" : "text"}" step="any" id="${id}" data-key="${f.key}" value="${esc(value)}" placeholder="${esc(f.default)}">`;
+  }
+  return `<div class="${cls}"><label for="${id}">${esc(f.label)}</label>${input}${help}</div>`;
+}
+
+const tvBox = `
+  <div class="box">
+    <h3>Pair with the TV</h3>
+    <p>Turn the Frame on, save its IP address above, then start pairing and confirm <b>Allow</b> on the TV with the remote within 60 seconds.</p>
+    <div class="row"><button class="btn primary" type="button" id="pairBtn">Start pairing</button>
+      <label class="switch" style="padding:0"><input type="checkbox" id="pairForce"> Request a new token</label>
+      <span class="msg" id="pairMsg"></span></div>
+  </div>`;
+
+async function loadSettings() {
+  schema = await api("/api/settings");
+  selectedBg = schema.values.BG_IMAGE || "";
+  const tabs = $("tabs"), panels = $("panels");
+  activeTab = activeTab || schema.groups[0];
+  tabs.innerHTML = schema.groups.map((g) => `<button type="button" class="tab ${g === activeTab ? "active" : ""}" data-tab="${g}">${g}</button>`).join("");
+  panels.innerHTML = schema.groups.map((g) => `
+    <div class="panel ${g === activeTab ? "active" : ""}" data-panel="${g}">
+      <div class="grid">${schema.fields.filter((f) => f.group === g).map((f) => fieldHtml(f, schema.values[f.key], schema.secrets_set[f.key])).join("")}</div>
+      ${g === "TV" ? tvBox : ""}
+    </div>`).join("");
+  tabs.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
+    activeTab = t.dataset.tab;
+    tabs.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
+    panels.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.dataset.panel === t.dataset.tab));
+  });
+  panels.querySelectorAll("[data-clear]").forEach((a) => a.onclick = async (ev) => {
+    ev.preventDefault();
+    if (!confirm("Remove the stored value?")) return;
+    await api("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ values: {}, clear: [a.dataset.clear] }) });
+    loadSettings();
+  });
+  $("pairBtn").onclick = async () => {
+    try {
+      await api("/api/pair", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: $("pairForce").checked }) });
+    } catch (e) { $("pairMsg").textContent = e.message; $("pairMsg").className = "msg bad"; return; }
+    loadStatus();
+  };
+  renderBackgrounds(schema.backgrounds);
+  loadStatus();
+}
+
+function renderBackgrounds(list) {
+  const el = $("bgs");
+  if (!el) return;
+  el.innerHTML = list.map((n) => `
+    <div class="bg ${n === selectedBg ? "selected" : ""}" data-name="${esc(n)}">
+      <img src="/api/backgrounds/${encodeURIComponent(n)}?thumb=1" alt="">
+      <div class="name">${esc(n)}</div>
+      <button type="button" class="del" title="Delete" data-del="${esc(n)}">✕</button>
+    </div>`).join("") + `<label class="drop" id="drop">Drop an image here<br>or click to upload<input type="file" accept="image/*" id="bgFile" hidden></label>`;
+  el.querySelectorAll(".bg").forEach((b) => b.onclick = (ev) => {
+    if (ev.target.dataset.del) return;
+    selectedBg = b.dataset.name;
+    el.querySelectorAll(".bg").forEach((x) => x.classList.toggle("selected", x === b));
+    const style = $("f_STYLE"); if (style) style.value = "image";
+  });
+  el.querySelectorAll("[data-del]").forEach((d) => d.onclick = async () => {
+    if (!confirm(`Delete ${d.dataset.del}?`)) return;
+    try { await api("/api/backgrounds/" + encodeURIComponent(d.dataset.del), { method: "DELETE" }); }
+    catch (e) { alert(e.message); return; }
+    if (selectedBg === d.dataset.del) selectedBg = "";
+    renderBackgrounds((await api("/api/backgrounds")).backgrounds);
+  });
+  const drop = $("drop"), file = $("bgFile");
+  file.onchange = () => file.files[0] && upload(file.files[0]);
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]); };
+}
+
+async function upload(file) {
+  const fd = new FormData(); fd.append("file", file);
+  $("drop").textContent = "Uploading…";
+  try {
+    const { name } = await api("/api/backgrounds", { method: "POST", body: fd });
+    selectedBg = name;
+    const style = $("f_STYLE"); if (style) style.value = "image";
+  } catch (e) { alert("Upload failed: " + e.message); }
+  renderBackgrounds((await api("/api/backgrounds")).backgrounds);
+}
+
+$("advToggle").onchange = (e) => $("panels").classList.toggle("show-adv", e.target.checked);
+
+$("settingsForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const values = {};
+  $("panels").querySelectorAll("[data-key]").forEach((el) => {
+    values[el.dataset.key] = el.type === "checkbox" ? String(el.checked) : el.value;
+  });
+  values.BG_IMAGE = selectedBg;
+  const msg = $("saveMsg");
+  try {
+    await api("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ values }) });
+    msg.textContent = "Saved. A new image is rendered right away."; msg.className = "msg ok";
+    loadSettings();
+  } catch (err) { msg.textContent = err.message; msg.className = "msg bad"; }
+};
+
+loadSettings();
+loadLogs();
+setInterval(loadStatus, 4000);
+setInterval(loadLogs, 6000);
+</script>
+</body>
+</html>

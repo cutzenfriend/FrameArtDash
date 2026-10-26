@@ -148,3 +148,24 @@ async def test_unreachable_tv_is_skipped(tmp_path):
     result = await svc.run_cycle()
     assert result.status == "skipped"
     assert "not reachable" in result.reason
+
+
+async def test_history_keeps_current_plus_three(tmp_path):
+    fake = FakeFrame()
+    texts = ["11.1", "22.2", "33.3", "44.4", "55.5"]
+    svc = _service(tmp_path, fake, texts)
+    for i in range(len(texts)):
+        svc.clock = lambda i=i: datetime(2026, 1, 1, 12, i)
+        assert (await svc.run_cycle()).status == "uploaded"
+    entries = svc.history.entries()
+    assert len(entries) == 4
+    assert entries[0]["content_id"] == fake.selected
+    assert len(list((tmp_path / "history").glob("2026*.jpg"))) == 4
+    assert (tmp_path / "history" / "current.jpg").exists()
+
+
+async def test_not_configured_is_skipped(tmp_path):
+    svc = _service(tmp_path, FakeFrame(), ["a"])
+    svc.apply_settings(Settings.from_env({"DATA_DIR": str(tmp_path)}))
+    result = await svc.run_cycle()
+    assert result.status == "skipped" and "URL" in result.reason

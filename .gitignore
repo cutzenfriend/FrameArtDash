@@ -11,3 +11,4 @@ data/
 *.jpg
 !docs/*.jpg
 .DS_Store
+.claude/

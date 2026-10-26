@@ -6,11 +6,12 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from frameartdash import compose, frame as frame_mod, render as render_mod
 from frameartdash.config import Settings, in_window
+from frameartdash.history import History
 from frameartdash.state import State, StateStore
 
 log = logging.getLogger(__name__)
@@ -57,10 +58,22 @@ class Service:
         self.frame_factory = frame_factory
         self.clock = clock
         self.store = StateStore(settings.state_file)
+        self.history = History(settings.data_dir / "history")
         self.lock = asyncio.Lock()
         self.last_result: CycleResult | None = None
         self.last_success: str | None = None
         self.last_jpeg: bytes | None = None
+        self.next_run: datetime | None = None
+        self._wake = asyncio.Event()
+
+    def apply_settings(self, settings: Settings) -> None:
+        """Use new settings from the next cycle on and reschedule right away."""
+        self.settings = settings
+        # The look may have changed even if the dashboard did not: skip the diff once.
+        state = self.store.load()
+        state.last_hash = None
+        self.store.save(state)
+        self._wake.set()
 
     # -- cycle ---------------------------------------------------------------
 
@@ -81,6 +94,10 @@ class Service:
 
     async def _cycle(self, force: bool, upload: bool) -> CycleResult:
         s = self.settings
+        if not s.configured:
+            return CycleResult("skipped", reason="no dashboard URL configured")
+        if upload and not s.frame_host:
+            return CycleResult("skipped", reason="no TV IP address configured")
         if upload and not force and not in_window(s.active_hours, self.clock().time()):
             return CycleResult("skipped", reason="outside ACTIVE_HOURS")
 
@@ -104,7 +121,7 @@ class Service:
             if s.only_in_artmode and power != "art":
                 return CycleResult("skipped", reason=f"TV is not in art mode ({power})")
 
-            jpeg, new_hash, distance = await self._render_and_compose(state, force=force)
+            image, jpeg, new_hash, distance = await self._render_and_compose(state, force=force)
             if jpeg is None:
                 return CycleResult("unchanged", reason=f"hash distance {distance}", distance=distance)
 
@@ -117,27 +134,30 @@ class Service:
             await retry(lambda: frame.select(content_id), s.retries, "Select")
             state.current_id = content_id
             state.last_hash = new_hash
-            state.last_upload = self.clock().astimezone().isoformat(timespec="seconds")
+            now = self.clock().astimezone()
+            state.last_upload = now.isoformat(timespec="seconds")
             self.store.save(state)
+            await asyncio.to_thread(self.history.add, image, content_id, now)
 
             deleted = await self._delete_stale(frame, state)
             return CycleResult("uploaded", content_id=content_id, distance=distance, deleted=deleted)
 
-    async def _render_and_compose(self, state: State, force: bool) -> tuple[bytes | None, str, int | None]:
+    async def _render_and_compose(self, state: State, force: bool):
+        """Returns (image, jpeg, hash, distance); image and jpeg are None if unchanged."""
         s = self.settings
         png = await retry(lambda: self.renderer(s), s.retries, "Render")
         shot = compose.load(png)
         new_hash = compose.image_hash(shot)
         distance = compose.hash_distance(state.last_hash, new_hash)
         if not force and s.diff_threshold > 0 and distance is not None and distance < s.diff_threshold:
-            return None, new_hash, distance
+            return None, None, new_hash, distance
 
         image = await asyncio.to_thread(compose.compose, shot, s)
         jpeg = await asyncio.to_thread(compose.to_jpeg, image, s.jpeg_quality)
         self.last_jpeg = jpeg
         if s.debug_images:
             self._save_debug(png, jpeg)
-        return jpeg, new_hash, distance
+        return image, jpeg, new_hash, distance
 
     def _save_debug(self, png: bytes, jpeg: bytes) -> None:
         try:
@@ -175,6 +195,8 @@ class Service:
         """Remove orphaned images left over from earlier runs."""
         async with self.lock:
             state = self.store.load()
+            if not self.settings.frame_host:
+                return []
             if not state.stale_ids() and not self.settings.cleanup_unmanaged:
                 return []
             async with self.frame_factory(self.settings) as frame:
@@ -193,5 +215,11 @@ class Service:
         except Exception as e:
             log.warning("Startup cleanup failed: %s", e)
         while True:
+            self._wake.clear()
             await self.run_cycle()
-            await asyncio.sleep(self.settings.interval_min * 60)
+            interval = self.settings.interval_min * 60
+            self.next_run = self.clock() + timedelta(seconds=interval)
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=interval)
+            except TimeoutError:
+                pass

@@ -6,11 +6,12 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
 from frameartdash import __version__, frame as frame_mod
-from frameartdash.config import ConfigError, Settings
+from frameartdash.config import ConfigError, Settings, SettingsStore
 from frameartdash.service import Service
 
 log = logging.getLogger("frameartdash")
@@ -28,16 +29,14 @@ def _setup_logging(level: str) -> None:
 
 
 async def _cmd_run(settings: Settings, args: argparse.Namespace) -> int:
-    from frameartdash.server import serve
+    from frameartdash.auth import Auth
+    from frameartdash.web import serve
 
-    log.info(
-        "FrameArtDash %s starting: %s -> %s every %d min",
-        __version__,
-        settings.target_url,
-        settings.frame_host or "(no FRAME_HOST)",
-        settings.interval_min,
-    )
-    await serve(Service(settings))
+    log.info("FrameArtDash %s starting", __version__)
+    if not settings.configured:
+        log.info("Not configured yet: open the web UI to set it up")
+    auth = Auth(settings.data_dir, os.environ.get("ADMIN_PASSWORD"))
+    await serve(Service(settings), SettingsStore(), auth)
     return 0
 
 
@@ -81,12 +80,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fad",
         description="FrameArtDash: render a dashboard as artwork for Samsung The Frame. "
-        "Configuration is read from environment variables.",
+        "Settings come from the web UI (/data/settings.json) or environment variables.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("run", help="run the daemon: schedule loop and HTTP API (default)")
+    sub.add_parser("run", help="run the web UI and the schedule loop (default)")
 
     once = sub.add_parser("once", help="run a single render -> compose -> push -> cleanup cycle")
     once.add_argument("--force", action="store_true", help="ignore ACTIVE_HOURS and the diff check")
@@ -116,13 +115,16 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     command = args.command or "run"
     try:
-        settings = Settings.from_env()
+        settings = SettingsStore().load()
     except ConfigError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
         return 2
     _setup_logging(settings.log_level)
     if command in ("pair", "status", "cleanup") and not settings.frame_host:
-        print("Configuration error: FRAME_HOST is required", file=sys.stderr)
+        print("Configuration error: no TV IP address (FRAME_HOST) configured", file=sys.stderr)
+        return 2
+    if command == "once" and not settings.configured:
+        print("Configuration error: no dashboard URL (TARGET_URL) configured", file=sys.stderr)
         return 2
     try:
         return asyncio.run(COMMANDS[command](settings, args))

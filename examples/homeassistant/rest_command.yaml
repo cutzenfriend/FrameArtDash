@@ -5,6 +5,9 @@ rest_command:
     url: http://192.168.1.20:8080/refresh
     method: POST
     timeout: 5
+    headers:
+      # API key from the FrameArtDash web UI
+      Authorization: "Bearer <api key>"
 
 # Example automation
 # automation:
