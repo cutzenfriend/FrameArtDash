@@ -3,7 +3,7 @@
 # Big, calm tiles read best from across the room.
 views:
   - title: Frame
-    path: "0"
+    path: art
     theme: frame
     type: sections
     max_columns: 3

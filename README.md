@@ -46,7 +46,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: Europe/Berlin
-      TARGET_URL: http://192.168.1.10:8123/frame-dash/0
+      TARGET_URL: http://192.168.1.10:8123/frame-dash/art
       HA_TOKEN: ${HA_TOKEN}
       FRAME_HOST: 192.168.1.50
       INTERVAL_MIN: 10
@@ -92,7 +92,7 @@ All settings are environment variables.
 
 | Variable | Default | Description |
 |---|---|---|
-| `TARGET_URL` | *(required)* | Page to render, e.g. `http://ha.local:8123/frame-dash/0` |
+| `TARGET_URL` | *(required)* | Page to render, e.g. `http://ha.local:8123/frame-dash/art` |
 | `HA_TOKEN` | | Home Assistant long-lived access token. Enables Home Assistant mode. |
 | `HA_URL` | origin of `TARGET_URL` | Home Assistant base URL the token belongs to |
 | `HA_THEME` | | Frontend theme to use, e.g. `frame` |

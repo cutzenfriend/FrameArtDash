@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: Europe/Berlin
-      TARGET_URL: http://192.168.1.10:8123/frame-dash/0
+      TARGET_URL: http://192.168.1.10:8123/frame-dash/art
       HA_TOKEN: ${HA_TOKEN}
       FRAME_HOST: 192.168.1.50
       INTERVAL_MIN: 10
