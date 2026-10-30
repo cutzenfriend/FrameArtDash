@@ -97,8 +97,10 @@ class Frame:
             raise FrameError("upload finished without a content id")
         return content_id
 
-    async def select(self, content_id: str) -> None:
-        await self.tv.select_image(content_id, show=False)
+    async def select(self, content_id: str, show: bool = False) -> None:
+        """Make content_id the current art. show=True also puts it on screen right away; some
+        Frames keep displaying the previous picture in Art Mode until then."""
+        await self.tv.select_image(content_id, show=show)
 
     async def delete(self, content_ids: list[str]) -> None:
         if content_ids:

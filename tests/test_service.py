@@ -35,11 +35,12 @@ class FakeFrame:
         self.calls.append(f"upload {cid}")
         return cid
 
-    async def select(self, cid):
+    async def select(self, cid, show=False):
         if self.fail_select:
             raise RuntimeError("select failed")
         assert cid in self.images
         self.selected = cid
+        self.shown = show
         self.calls.append(f"select {cid}")
 
     async def delete(self, cids):
@@ -264,3 +265,12 @@ async def test_transfer_socket_uses_tv_host_for_unspecified_ip(monkeypatch):
     await art._open_d2d_connection({"ip": "192.168.1.66", "port": "1"})
     await art._open_d2d_connection({"ip": "10.0.0.9", "port": "1"})
     assert seen == ["192.168.1.66", "192.168.1.66", "10.0.0.9"]
+
+
+async def test_shows_new_picture_only_in_art_mode(tmp_path):
+    art = FakeFrame("art")
+    assert (await _service(tmp_path / "a", art, ["a"]).run_cycle()).status == "uploaded"
+    assert art.shown is True
+    tv = FakeFrame("tv")
+    assert (await _service(tmp_path / "b", tv, ["a"]).run_cycle()).status == "uploaded"
+    assert tv.shown is False
