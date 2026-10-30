@@ -158,7 +158,8 @@ class Service:
             state.add(content_id)
             self.store.save(state)
 
-            await retry(lambda: frame.select(content_id), s.retries, "Select")
+            # Only show it right away while the TV is already in Art Mode, so live TV is never interrupted.
+            await retry(lambda: frame.select(content_id, show=power == "art"), s.retries, "Select")
             state.current_id = content_id
             state.last_hash = new_hash
             now = self.clock().astimezone()

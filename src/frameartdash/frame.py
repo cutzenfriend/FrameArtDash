@@ -20,6 +20,25 @@ MY_PHOTOS = "MY-C0002"
 POWER_ON_STATES = ("on", "tv", "art")
 
 
+# Addresses some TVs put in conn_info that mean "this TV", not a host to connect to.
+_UNSPECIFIED = ("", "0.0.0.0", "::", "127.0.0.1", "localhost")
+
+
+class _FrameArt(SamsungTVAsyncArt):
+    """SamsungTVAsyncArt that connects transfers to the TV itself when it names no usable address.
+
+    Some Frames answer an upload with conn_info {"ip": "0.0.0.0", "port": ...}; connecting to
+    0.0.0.0 fails with ECONNREFUSED, so use the TV's own host for the transfer socket instead.
+    """
+
+    async def _open_d2d_connection(self, conn_info, secured=None):
+        ip = str(conn_info.get("ip") or "").strip()
+        if ip in _UNSPECIFIED:
+            log.debug("TV named %r for the transfer socket, using %s", ip, self.host)
+            conn_info = {**conn_info, "ip": self.host}
+        return await super()._open_d2d_connection(conn_info, secured)
+
+
 class FrameError(RuntimeError):
     pass
 
@@ -39,7 +58,7 @@ class Frame:
         self.settings.token_file.parent.mkdir(parents=True, exist_ok=True)
         # The constructor checks the token synchronously, keep it off the event loop.
         self._tv = await asyncio.to_thread(
-            SamsungTVAsyncArt,
+            _FrameArt,
             host=self.settings.frame_host,
             port=self.settings.frame_port,
             token_file=str(self.settings.token_file),
@@ -78,8 +97,10 @@ class Frame:
             raise FrameError("upload finished without a content id")
         return content_id
 
-    async def select(self, content_id: str) -> None:
-        await self.tv.select_image(content_id, show=False)
+    async def select(self, content_id: str, show: bool = False) -> None:
+        """Make content_id the current art. show=True also puts it on screen right away; some
+        Frames keep displaying the previous picture in Art Mode until then."""
+        await self.tv.select_image(content_id, show=show)
 
     async def delete(self, content_ids: list[str]) -> None:
         if content_ids:
