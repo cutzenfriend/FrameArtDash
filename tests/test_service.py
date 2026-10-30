@@ -245,3 +245,22 @@ async def test_cards_layout_uses_card_renderer(tmp_path):
 def test_cards_mode_needs_ha_credentials():
     s = Settings.from_env({"LAYOUT": "cards"})
     assert not s.configured and "Home Assistant" in s.not_configured_reason
+
+
+async def test_transfer_socket_uses_tv_host_for_unspecified_ip(monkeypatch):
+    from samsungframetv.async_art import SamsungTVAsyncArt
+
+    from frameartdash.frame import _FrameArt
+
+    seen = []
+
+    async def fake_open(self, conn_info, secured=None):
+        seen.append(conn_info["ip"])
+
+    monkeypatch.setattr(SamsungTVAsyncArt, "_open_d2d_connection", fake_open)
+    art = _FrameArt.__new__(_FrameArt)
+    art.host = "192.168.1.66"
+    await art._open_d2d_connection({"ip": "0.0.0.0", "port": "56603"})
+    await art._open_d2d_connection({"ip": "192.168.1.66", "port": "1"})
+    await art._open_d2d_connection({"ip": "10.0.0.9", "port": "1"})
+    assert seen == ["192.168.1.66", "192.168.1.66", "10.0.0.9"]
