@@ -124,3 +124,40 @@ async def test_ha_client_against_fake_server():
         with pytest.raises(HAError, match="401"):
             async with HAClient(base, "wrong") as ha:
                 await ha.states()
+
+
+def test_person_ids_all_exclude_and_only_home():
+    from frameartdash.cards.data import person_ids
+
+    def person(state, *trackers):
+        return {"state": state, "attributes": {"device_trackers": list(trackers)}}
+
+    states = {
+        "person.alex": person("home", "device_tracker.a"),
+        "person.sam": person("not_home", "device_tracker.s"),
+        "person.kiosk": person("home", "device_tracker.k"),
+        "person.nodevice": person("home"),
+        "person.stale": person("home", "device_tracker.gone"),
+        "device_tracker.a": {"state": "home"},
+        "device_tracker.s": {"state": "not_home"},
+        "device_tracker.k": {"state": "home"},
+        "device_tracker.guest_phone": {"state": "home"},
+        "light.x": {"state": "on"},
+    }
+    o = {"entities": ["device_tracker.guest_phone"], "all_persons": True, "exclude": ["person.kiosk"]}
+    # No tracker → never shown, even when picked or all_persons is on.
+    assert person_ids(o, states) == [
+        "device_tracker.guest_phone",
+        "person.alex",
+        "person.sam",
+        "person.stale",
+    ]
+    o["only_home"] = True
+    # Home means one of the trackers reports home, not just the person state.
+    assert person_ids(o, states) == ["device_tracker.guest_phone", "person.alex"]
+    assert person_ids({"entities": ["person.nodevice"], "only_home": True}, states) == []
+    # Both options off: the picked entities exactly as before.
+    assert person_ids({"entities": ["person.nodevice", "person.sam"]}, states) == [
+        "person.nodevice",
+        "person.sam",
+    ]

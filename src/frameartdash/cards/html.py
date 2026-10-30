@@ -11,7 +11,7 @@ from functools import cache
 from html import escape
 from importlib import resources
 
-from frameartdash.cards.data import CardData, visible
+from frameartdash.cards.data import CardData, person_ids, visible
 from frameartdash.cards.i18n import BINARY, WEATHER_ICONS
 
 CANVAS = (1920, 1080)
@@ -653,7 +653,7 @@ def card_todo(card, o, data: CardData) -> str:
 
 def card_persons(card, o, data: CardData) -> str:
     people = []
-    for eid in o.get("entities") or []:
+    for eid in person_ids(o, data.states):
         st = data.state(eid)
         name = entity_name(st, fallback=eid)
         home = (st or {}).get("state") == "home"

@@ -49,8 +49,8 @@ def normalize_card(raw: dict) -> dict:
     options = defaults(card_type)
     given = raw.get("options") or {}
     for opt in (*t.options, *COMMON):
-        if opt.key in given:
-            options[opt.key] = _coerce(opt, given[opt.key])
+        # Defaults are coerced too, so an unset option looks the same before and after a save.
+        options[opt.key] = _coerce(opt, given[opt.key] if opt.key in given else options[opt.key])
     w = _clamp(raw.get("w"), 2, 100, t.size[0])
     h = _clamp(raw.get("h"), 2, 100, t.size[1])
     return {
