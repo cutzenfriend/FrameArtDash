@@ -42,6 +42,37 @@ def visible(card: dict, states: dict[str, dict]) -> bool:
     return (state not in values) if negate else (state in values)
 
 
+def _trackers(eid: str, states: dict[str, dict]) -> list[str]:
+    """Device trackers behind a People entry: a person's assigned trackers, or a tracker itself."""
+    if eid.startswith("device_tracker."):
+        return [eid]
+    return list(((states.get(eid) or {}).get("attributes") or {}).get("device_trackers") or [])
+
+
+def person_ids(o: dict, states: dict[str, dict]) -> list[str]:
+    """Entities of a People card.
+
+    The picked entities plus (with all_persons) every person, minus the excluded ones. With
+    all_persons or only_home, only entries backed by at least one device tracker are shown, and
+    with only_home at least one of those trackers must itself report home. With both off, the
+    picked entities are shown as before.
+    """
+    ids = list(o.get("entities") or [])
+    if o.get("all_persons"):
+        ids += sorted(e for e in states if e.startswith("person.") and e not in ids)
+    excluded = set(o.get("exclude") or [])
+    filtered = bool(o.get("all_persons") or o.get("only_home"))
+    shown = []
+    for eid in ids:
+        trackers = _trackers(eid, states)
+        if eid in excluded or (filtered and not trackers):
+            continue
+        if o.get("only_home") and not any((states.get(t) or {}).get("state") == "home" for t in trackers):
+            continue
+        shown.append(eid)
+    return shown
+
+
 def _hours(card: dict) -> float:
     try:
         return max(1.0, min(float(card["options"].get("hours") or 24), 24 * 7))
@@ -113,7 +144,10 @@ async def collect(
 
             tasks.append((cid, todo()))
         elif c["type"] in ("persons", "media", "camera"):
-            ids = o.get("entities") or ([o["entity"]] if o.get("entity") else [])
+            if c["type"] == "persons":
+                ids = person_ids(o, data.states)
+            else:
+                ids = o.get("entities") or ([o["entity"]] if o.get("entity") else [])
             for eid in ids:
                 st = data.states.get(eid) or {}
                 if c["type"] == "camera":

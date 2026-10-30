@@ -264,6 +264,9 @@ CARD_TYPES: tuple[CardType, ...] = (
         (24, 12),
         (
             Opt("entities", "People", "entities", domains=("person", "device_tracker")),
+            Opt("all_persons", "All people (with a tracked device)", "bool", False),
+            Opt("exclude", "Leave out", "entities", domains=("person", "device_tracker")),
+            Opt("only_home", "Only people whose device is home", "bool", False),
             Opt("show_names", "Show names", "bool", True),
             Opt("show_state", "Show state", "bool", True),
         ),
