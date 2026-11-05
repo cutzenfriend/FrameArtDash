@@ -85,6 +85,15 @@ class Frame:
         """One of 'off', 'standby', 'tv', 'art' or 'on'."""
         return await self.tv.get_power_state()
 
+    async def art_mode(self) -> bool:
+        """True when the TV reports Art Mode on (art API get_artmode_status)."""
+        return str(await self.tv.get_artmode()).lower() == "on"
+
+    async def set_art_mode(self, on: bool = True) -> None:
+        """Switch Art Mode on or off (art API set_artmode_status). Works only while the TV is on;
+        from standby it has to be woken first (Wake-on-LAN)."""
+        await self.tv.set_artmode("on" if on else "off")
+
     async def upload(self, jpeg: bytes) -> str:
         content_id = await self.tv.upload(
             jpeg,

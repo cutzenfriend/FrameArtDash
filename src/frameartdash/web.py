@@ -30,7 +30,7 @@ BACKGROUNDS = web.AppKey("backgrounds", Backgrounds)
 WEBSTATE = web.AppKey("webstate", dict)
 LOOP = web.AppKey("loop", asyncio.Task)
 
-PUBLIC = {"/login", "/healthz", "/refresh", "/favicon.svg"}
+PUBLIC = {"/login", "/healthz", "/refresh", "/artmode", "/favicon.svg"}
 STATIC_TYPES = {
     ".woff2": "font/woff2",
     ".json": "application/json",
@@ -432,15 +432,87 @@ async def healthz(request: web.Request) -> web.Response:
     return web.json_response(body, status=200 if alive else 503)
 
 
-async def refresh_with_key(request: web.Request) -> web.Response:
-    """For Home Assistant: ``POST /refresh`` with ``Authorization: Bearer <api key>``."""
+def _api_key_ok(request: web.Request) -> bool:
     header = request.headers.get("Authorization", "")
     key = (
         header.removeprefix("Bearer ").strip() or request.headers.get("X-Api-Key") or request.query.get("key")
     )
-    if not request.app[AUTH].check_api_key(key):
+    return request.app[AUTH].check_api_key(key)
+
+
+async def refresh_with_key(request: web.Request) -> web.Response:
+    """For Home Assistant: ``POST /refresh`` with ``Authorization: Bearer <api key>``."""
+    if not _api_key_ok(request):
         return _json_error("invalid API key", 401)
     return await refresh_api(request)
+
+
+# How long POST /artmode waits for the TV to confirm Art Mode, and how often it asks.
+ARTMODE_WAIT_S = 15.0
+ARTMODE_POLL_S = 1.0
+
+
+async def artmode(request: web.Request) -> web.Response:
+    """``POST /artmode``: switch a TV that is on (e.g. in an app) to Art Mode with a fresh picture.
+
+    If the TV is not in Art Mode yet, a forced cycle runs first (the upload is selected without
+    being shown, so the app is not interrupted), then Art Mode is switched on, confirmed, and the
+    new picture put on screen, so last night's picture is never what appears.
+    Answers ``200`` once in Art Mode (``changed`` false if it already was; ``cycle`` is the cycle's
+    status), ``409`` if the TV is off or in standby (wake it first), ``503`` if it is unreachable,
+    ``504`` if it did not confirm Art Mode in time. Never turns Art Mode off.
+    """
+    if not _api_key_ok(request):
+        return _json_error("invalid API key", 401)
+    service = request.app[SERVICE]
+    settings = service.settings
+    if not settings.frame_host:
+        return _json_error("no TV IP address configured")
+    try:
+        async with asyncio.timeout(25):
+            async with frame_mod.connect(settings) as frame:
+                power = await frame.power_state()
+        if power in ("off", "standby"):
+            return web.json_response({"status": "tv_off", "power": power}, status=409)
+        if power == "art":
+            return web.json_response({"status": "art", "power_before": power, "changed": False})
+
+        # Fresh picture first; a failed cycle must not keep the TV out of Art Mode.
+        cycle = await service.run_cycle(force=True)
+        log.info("Switching the TV to Art Mode (power state %s, cycle %s)", power, cycle.status)
+
+        async with asyncio.timeout(ARTMODE_WAIT_S + 20):
+            async with frame_mod.connect(settings) as frame:
+                await frame.set_art_mode(True)
+                loop = asyncio.get_running_loop()
+                deadline = loop.time() + ARTMODE_WAIT_S
+                while True:
+                    try:
+                        if await frame.art_mode():
+                            break
+                    except Exception as e:  # noqa: BLE001 - the TV may not answer mid-switch
+                        log.debug("Art Mode check failed, retrying: %s", e)
+                    if loop.time() >= deadline:
+                        return web.json_response(
+                            {"status": "not_confirmed", "power_before": power, "cycle": cycle.status},
+                            status=504,
+                        )
+                    await asyncio.sleep(ARTMODE_POLL_S)
+                # Some Frames keep showing the previous picture until the current one is shown again.
+                current = service.store.load().current_id
+                if current:
+                    try:
+                        await frame.select(current, show=True)
+                    except Exception as e:  # noqa: BLE001 - Art Mode is on; the picture is a bonus
+                        log.warning("Showing %s after the Art Mode switch failed: %s", current, e)
+    except frame_mod.FrameUnreachable as e:
+        return web.json_response({"status": "unreachable", "error": str(e)}, status=503)
+    except TimeoutError:
+        return web.json_response({"status": "timeout"}, status=504)
+    except Exception as e:  # noqa: BLE001 - reported to the caller
+        log.warning("Art Mode switch failed: %s", e)
+        return _json_error(str(e) or type(e).__name__, 502)
+    return web.json_response({"status": "art", "power_before": power, "changed": True, "cycle": cycle.status})
 
 
 # -- app ----------------------------------------------------------------------
@@ -462,6 +534,7 @@ def build_app(service: Service, store: SettingsStore, auth: Auth, run_loop: bool
     r.add_post("/logout", logout)
     r.add_get("/healthz", healthz)
     r.add_post("/refresh", refresh_with_key)
+    r.add_post("/artmode", artmode)
     r.add_get("/api/status", status)
     r.add_get("/api/logs", logs)
     r.add_get("/api/settings", get_settings)
