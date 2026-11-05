@@ -154,3 +154,182 @@ async def test_card_editor_endpoints(client):
     assert canvas.status == 200 and "Home Assistant" in await canvas.text()
     assert (await client.get("/static/mdi.json")).status == 200
     assert (await client.get("/static/../settings.json")).status == 404
+
+
+class _ArtFrame:
+    """Fake Frame for POST /artmode: reaches Art Mode after `confirm_after` checks."""
+
+    def __init__(self, power="tv", confirm_after=1):
+        self.power = power
+        self.confirm_after = confirm_after
+        self.set_calls: list[bool] = []
+        self.checks = 0
+        self.shown: list[tuple[str, bool]] = []
+
+    async def power_state(self):
+        return self.power
+
+    async def set_art_mode(self, on=True):
+        self.set_calls.append(on)
+
+    async def art_mode(self):
+        self.checks += 1
+        return self.confirm_after is not None and self.checks >= self.confirm_after
+
+    async def select(self, cid, show=False):
+        self.shown.append((cid, show))
+
+
+def _fake_connect(monkeypatch, fake):
+    from contextlib import asynccontextmanager
+
+    from frameartdash import web as web_mod
+
+    @asynccontextmanager
+    async def connect(settings):
+        if isinstance(fake, Exception):
+            raise fake
+        yield fake
+
+    monkeypatch.setattr(web_mod.frame_mod, "connect", connect)
+    monkeypatch.setattr(web_mod, "ARTMODE_POLL_S", 0.01)
+    monkeypatch.setattr(web_mod, "ARTMODE_WAIT_S", 0.2)
+    return fake
+
+
+def _fake_cycle(client, monkeypatch, events, status="uploaded", content_id="MY_F0101"):
+    """Replace the service's cycle: records its order relative to the Art Mode switch."""
+    from frameartdash.service import CycleResult
+
+    async def run_cycle(force=False, upload=True):
+        events.append(("cycle", force))
+        if status == "uploaded":
+            state = client.service.store.load()
+            state.current_id = content_id
+            client.service.store.save(state)
+        return CycleResult(status)
+
+    monkeypatch.setattr(client.service, "run_cycle", run_cycle)
+
+
+@pytest.fixture
+async def tv_client(client):
+    await login(client)
+    resp = await client.put("/api/settings", json={"values": {"FRAME_HOST": "10.0.0.5"}})
+    assert resp.status == 200, await resp.text()
+    client.key = {"Authorization": f"Bearer {client.auth.api_key}"}
+    return client
+
+
+async def test_artmode_needs_api_key(client):
+    assert (await client.post("/artmode")).status == 401
+
+
+async def test_artmode_refreshes_then_switches_from_an_app(tv_client, monkeypatch):
+    events = []
+    fake = _ArtFrame(power="tv", confirm_after=3)
+    orig_set = fake.set_art_mode
+
+    async def set_art_mode(on=True):
+        events.append(("artmode", on))
+        await orig_set(on)
+
+    fake.set_art_mode = set_art_mode
+    _fake_connect(monkeypatch, fake)
+    _fake_cycle(tv_client, monkeypatch, events)
+    resp = await tv_client.post("/artmode", headers=tv_client.key)
+    body = await resp.json()
+    assert resp.status == 200, body
+    assert body == {"status": "art", "power_before": "tv", "changed": True, "cycle": "uploaded"}
+    # Fresh picture first, then Art Mode, then the new picture put on screen.
+    assert events == [("cycle", True), ("artmode", True)]
+    assert fake.checks == 3
+    assert fake.shown == [("MY_F0101", True)]
+
+
+async def test_artmode_switches_even_if_the_cycle_fails(tv_client, monkeypatch):
+    events = []
+    fake = _ArtFrame(power="on")
+    _fake_connect(monkeypatch, fake)
+    _fake_cycle(tv_client, monkeypatch, events, status="error")
+    resp = await tv_client.post("/artmode", headers=tv_client.key)
+    body = await resp.json()
+    assert resp.status == 200 and body["cycle"] == "error"
+    assert fake.set_calls == [True]
+    # Retried once in Art Mode; the stale current picture is not re-shown.
+    assert events == [("cycle", True), ("cycle", True)]
+    assert fake.shown == []
+
+
+async def test_artmode_pushes_after_switch_when_only_in_artmode_skipped(tv_client, monkeypatch):
+    """ONLY_IN_ARTMODE: the pre-switch cycle is skipped in an app, so one runs after the switch."""
+    from frameartdash.service import CycleResult
+
+    events = []
+    fake = _ArtFrame(power="tv", confirm_after=1)
+    orig_set = fake.set_art_mode
+
+    async def set_art_mode(on=True):
+        events.append(("artmode", on))
+        await orig_set(on)
+
+    fake.set_art_mode = set_art_mode
+    _fake_connect(monkeypatch, fake)
+    results = iter(["skipped", "uploaded"])
+
+    async def run_cycle(force=False, upload=True):
+        status = next(results)
+        events.append(("cycle", status))
+        return CycleResult(status)
+
+    monkeypatch.setattr(tv_client.service, "run_cycle", run_cycle)
+    resp = await tv_client.post("/artmode", headers=tv_client.key)
+    body = await resp.json()
+    assert resp.status == 200, body
+    assert body["cycle"] == "uploaded"
+    assert events == [("cycle", "skipped"), ("artmode", True), ("cycle", "uploaded")]
+    assert fake.shown == []
+
+
+async def test_artmode_already_art_is_a_no_op(tv_client, monkeypatch):
+    events = []
+    fake = _ArtFrame(power="art")
+    _fake_connect(monkeypatch, fake)
+    _fake_cycle(tv_client, monkeypatch, events)
+    resp = await tv_client.post("/artmode", headers=tv_client.key)
+    assert resp.status == 200 and (await resp.json())["changed"] is False
+    assert fake.set_calls == [] and events == [] and fake.shown == []
+
+
+@pytest.mark.parametrize("power", ["off", "standby"])
+async def test_artmode_refuses_when_tv_is_off(tv_client, monkeypatch, power):
+    events = []
+    fake = _ArtFrame(power=power)
+    _fake_connect(monkeypatch, fake)
+    _fake_cycle(tv_client, monkeypatch, events)
+    resp = await tv_client.post("/artmode", headers=tv_client.key)
+    assert resp.status == 409 and (await resp.json())["status"] == "tv_off"
+    assert fake.set_calls == [] and events == []
+
+
+async def test_artmode_not_confirmed(tv_client, monkeypatch):
+    events = []
+    fake = _ArtFrame(power="tv", confirm_after=None)
+    _fake_connect(monkeypatch, fake)
+    _fake_cycle(tv_client, monkeypatch, events)
+    resp = await tv_client.post("/artmode", headers=tv_client.key)
+    assert resp.status == 504 and (await resp.json())["status"] == "not_confirmed"
+    assert fake.shown == []
+
+
+async def test_artmode_unreachable(tv_client, monkeypatch):
+    from frameartdash.frame import FrameUnreachable
+
+    _fake_connect(monkeypatch, FrameUnreachable("10.0.0.5 not reachable"))
+    resp = await tv_client.post("/artmode", headers=tv_client.key)
+    assert resp.status == 503 and (await resp.json())["status"] == "unreachable"
+
+
+async def test_artmode_without_tv_configured(client):
+    resp = await client.post("/artmode", headers={"Authorization": f"Bearer {client.auth.api_key}"})
+    assert resp.status == 400

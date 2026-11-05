@@ -242,6 +242,7 @@ Call `rest_command.frameartdash_refresh` when someone enters the room. A refresh
 |---|---|---|
 | `GET /` | password | Web UI |
 | `POST /refresh` | API key | Start a cycle now (`202 Accepted`, or `409` if one is already running). Send the key as `Authorization: Bearer <key>`. |
+| `POST /artmode` | API key | Switch a TV that is on (e.g. in an app after a Wake-on-LAN wake) to Art Mode with a fresh picture: a forced cycle runs first (uploaded without interrupting the app), then Art Mode is switched on and the new picture shown. Waits for the TV to confirm: `200` (`changed: false` if it already was in Art Mode; `cycle` = the cycle's status), `409` TV off or in standby (wake it first), `503` unreachable, `504` not confirmed in 15 s. Never turns Art Mode off. Allow a generous client timeout (render + upload + switch). |
 | `GET /healthz` | none | `200` while the scheduler runs |
 | `/api/*` | password | JSON API used by the web UI |
 

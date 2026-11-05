@@ -8,6 +8,12 @@ rest_command:
     headers:
       # API key from the FrameArtDash web UI
       Authorization: "Bearer <api key>"
+  frameartdash_artmode:
+    url: http://192.168.1.20:8080/artmode
+    method: POST
+    timeout: 120  # renders and uploads a fresh picture, then waits for the TV to confirm Art Mode
+    headers:
+      Authorization: "Bearer <api key>"
 
 # Example automation
 # automation:
