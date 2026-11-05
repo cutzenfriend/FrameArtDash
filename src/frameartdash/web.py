@@ -457,7 +457,9 @@ async def artmode(request: web.Request) -> web.Response:
 
     If the TV is not in Art Mode yet, a forced cycle runs first (the upload is selected without
     being shown, so the app is not interrupted), then Art Mode is switched on, confirmed, and the
-    new picture put on screen, so last night's picture is never what appears.
+    new picture put on screen, so last night's picture is never what appears. If that first cycle
+    did not upload (``ONLY_IN_ARTMODE`` skips it while the TV is in an app, or it failed), a second
+    forced cycle runs once Art Mode is confirmed.
     Answers ``200`` once in Art Mode (``changed`` false if it already was; ``cycle`` is the cycle's
     status), ``409`` if the TV is off or in standby (wake it first), ``503`` if it is unreachable,
     ``504`` if it did not confirm Art Mode in time. Never turns Art Mode off.
@@ -500,11 +502,16 @@ async def artmode(request: web.Request) -> web.Response:
                     await asyncio.sleep(ARTMODE_POLL_S)
                 # Some Frames keep showing the previous picture until the current one is shown again.
                 current = service.store.load().current_id
-                if current:
+                if current and cycle.status == "uploaded":
                     try:
                         await frame.select(current, show=True)
                     except Exception as e:  # noqa: BLE001 - Art Mode is on; the picture is a bonus
                         log.warning("Showing %s after the Art Mode switch failed: %s", current, e)
+        if cycle.status != "uploaded":
+            # No fresh picture before the switch (e.g. ONLY_IN_ARTMODE skips the cycle while the TV
+            # is in an app): push one now that the TV is in Art Mode, so it is shown right away.
+            log.info("No picture before the switch (%s), pushing one now in Art Mode", cycle.status)
+            cycle = await service.run_cycle(force=True)
     except frame_mod.FrameUnreachable as e:
         return web.json_response({"status": "unreachable", "error": str(e)}, status=503)
     except TimeoutError:

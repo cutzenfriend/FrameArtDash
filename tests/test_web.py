@@ -256,6 +256,39 @@ async def test_artmode_switches_even_if_the_cycle_fails(tv_client, monkeypatch):
     body = await resp.json()
     assert resp.status == 200 and body["cycle"] == "error"
     assert fake.set_calls == [True]
+    # Retried once in Art Mode; the stale current picture is not re-shown.
+    assert events == [("cycle", True), ("cycle", True)]
+    assert fake.shown == []
+
+
+async def test_artmode_pushes_after_switch_when_only_in_artmode_skipped(tv_client, monkeypatch):
+    """ONLY_IN_ARTMODE: the pre-switch cycle is skipped in an app, so one runs after the switch."""
+    from frameartdash.service import CycleResult
+
+    events = []
+    fake = _ArtFrame(power="tv", confirm_after=1)
+    orig_set = fake.set_art_mode
+
+    async def set_art_mode(on=True):
+        events.append(("artmode", on))
+        await orig_set(on)
+
+    fake.set_art_mode = set_art_mode
+    _fake_connect(monkeypatch, fake)
+    results = iter(["skipped", "uploaded"])
+
+    async def run_cycle(force=False, upload=True):
+        status = next(results)
+        events.append(("cycle", status))
+        return CycleResult(status)
+
+    monkeypatch.setattr(tv_client.service, "run_cycle", run_cycle)
+    resp = await tv_client.post("/artmode", headers=tv_client.key)
+    body = await resp.json()
+    assert resp.status == 200, body
+    assert body["cycle"] == "uploaded"
+    assert events == [("cycle", "skipped"), ("artmode", True), ("cycle", "uploaded")]
+    assert fake.shown == []
 
 
 async def test_artmode_already_art_is_a_no_op(tv_client, monkeypatch):
